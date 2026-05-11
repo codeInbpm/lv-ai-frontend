@@ -1,0 +1,24 @@
+{
+  "name": "旅途AI",
+  "appid": "wx211854ff12b5023a",
+  "description": "AI驱动的个性化智能旅游规划小程序",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx211854ff12b5023a",
+    "setting": {
+      "urlCheck": false,
+      "minified": true,
+      "es6": true
+    },
+    "usingComponents": true,
+    "permission": {
+      "scope.userLocation": {
+        "desc": "获取您的位置，用于行程规划和就近推荐"
+      }
+    },
+    "requiredPrivateInfos": ["getLocation", "chooseLocation"],
+    "plugins": {}
+  }
+}

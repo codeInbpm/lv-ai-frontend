@@ -1,0 +1,25 @@
+/* uni-app 全局样式 */
+uni-page-body, page {
+  box-sizing: border-box;
+}
+
+/* 重置样式 */
+view, text, image {
+  box-sizing: border-box;
+}
+
+input {
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  &::after {
+    border: none;
+  }
+}

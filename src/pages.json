@@ -1,0 +1,104 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "旅途AI",
+        "navigationStyle": "custom",
+        "backgroundColor": "#f0f9ff"
+      }
+    },
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/plan/create/index",
+      "style": {
+        "navigationBarTitleText": "创建行程",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/plan/result/index",
+      "style": {
+        "navigationBarTitleText": "AI生成行程",
+        "navigationBarBackgroundColor": "#0ea5e9",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/plan/detail/index",
+      "style": {
+        "navigationBarTitleText": "行程详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/plan/list/index",
+      "style": {
+        "navigationBarTitleText": "我的行程",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/discover/index",
+      "style": {
+        "navigationBarTitleText": "发现",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "我的",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "tabBar": {
+    "color": "#94a3b8",
+    "selectedColor": "#0ea5e9",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "static/icons/home.png",
+        "selectedIconPath": "static/icons/home-active.png"
+      },
+      {
+        "pagePath": "pages/discover/index",
+        "text": "发现",
+        "iconPath": "static/icons/discover.png",
+        "selectedIconPath": "static/icons/discover-active.png"
+      },
+      {
+        "pagePath": "pages/plan/list/index",
+        "text": "行程",
+        "iconPath": "static/icons/plan.png",
+        "selectedIconPath": "static/icons/plan-active.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的",
+        "iconPath": "static/icons/profile.png",
+        "selectedIconPath": "static/icons/profile-active.png"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "旅途AI",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f0f9ff",
+    "backgroundTextStyle": "light"
+  },
+  "uniIdRouter": {}
+}
