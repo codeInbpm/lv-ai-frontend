@@ -2,6 +2,10 @@
 import { ref, onMounted } from 'vue'
 import { discoverApi, type HotDestination } from '../../api/discover'
 import type { TravelPlan } from '../../api/plan'
+import NavBar from '../../components/common/NavBar.vue'
+import { useNavBar } from '../../composables/useNavBar'
+
+const { totalHeight: navTotalHeight } = useNavBar()
 
 const hotList = ref<HotDestination[]>([])
 const planList = ref<TravelPlan[]>([])
@@ -10,11 +14,7 @@ const loading = ref(false)
 const hasMore = ref(true)
 const page = ref(1)
 
-const statusBarHeight = ref(0)
-
 onMounted(async () => {
-  const sysInfo = uni.getSystemInfoSync()
-  statusBarHeight.value = sysInfo.statusBarHeight || 20
   await loadData()
 })
 
@@ -73,9 +73,18 @@ function goCreate(destination?: string) {
 
 <template>
   <view class="discover-page">
-    <!-- 顶部 -->
-    <view class="header" :style="{ paddingTop: statusBarHeight + 'px' }">
-      <text class="header-title">✈ 发现好去处</text>
+    <NavBar
+      transparent
+      fixed
+      title="发现好去处"
+      textColor="#ffffff"
+      background="linear-gradient(135deg, #0369a1, #0ea5e9)"
+      :placeholder="false"
+    />
+
+    <!-- 顶部搜索区：包含精确占位 -->
+    <view class="header">
+      <view :style="{ height: navTotalHeight + 'px' }" />
       <view class="search-box">
         <text class="search-icon">🔍</text>
         <input
@@ -169,27 +178,20 @@ function goCreate(destination?: string) {
 
 .header {
   background: linear-gradient(135deg, #0369a1, #0ea5e9);
-  padding: 0 32rpx 32rpx;
-}
-.header-title {
-  font-size: 40rpx;
-  font-weight: 800;
-  color: #fff;
-  display: block;
-  padding: 24rpx 0 20rpx;
+  padding: 0 32rpx 28rpx;
 }
 
 .search-box {
   display: flex;
   align-items: center;
-  background: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.18);
   border-radius: 24rpx;
   padding: 16rpx 20rpx;
   gap: 12rpx;
 }
-.search-icon { font-size: 28rpx; }
+.search-icon { font-size: 28rpx; color: #fff; }
 .search-input { flex: 1; font-size: 28rpx; color: #fff; }
-.search-btn { font-size: 26rpx; color: rgba(255,255,255,0.8); padding-left: 12rpx; border-left: 1rpx solid rgba(255,255,255,0.3); }
+.search-btn { font-size: 26rpx; color: rgba(255,255,255,0.85); padding-left: 16rpx; border-left: 1rpx solid rgba(255,255,255,0.3); }
 
 .scroll { flex: 1; }
 .section { padding: 32rpx 32rpx 0; }
@@ -220,20 +222,13 @@ function goCreate(destination?: string) {
 
 .empty {
   display: flex; flex-direction: column; align-items: center;
-  padding: 80rpx 0;
-  gap: 16rpx;
-  font-size: 28rpx;
-  color: var(--text-tertiary);
+  padding: 80rpx 0; gap: 16rpx;
+  font-size: 28rpx; color: var(--text-tertiary);
 }
 .empty-icon { font-size: 80rpx; }
 
 .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; }
-.plan-card {
-  background: #fff;
-  border-radius: 20rpx;
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-}
+.plan-card { background: #fff; border-radius: 20rpx; overflow: hidden; box-shadow: var(--shadow-sm); }
 .plan-cover {
   height: 160rpx;
   background: linear-gradient(135deg, #bae6fd, #7dd3fc);
@@ -242,19 +237,14 @@ function goCreate(destination?: string) {
 }
 .plan-emoji { font-size: 64rpx; }
 .plan-days-badge {
-  position: absolute;
-  bottom: 10rpx; right: 10rpx;
-  background: rgba(0,0,0,0.35);
-  color: #fff;
-  font-size: 20rpx;
-  padding: 4rpx 10rpx;
-  border-radius: 100rpx;
+  position: absolute; bottom: 10rpx; right: 10rpx;
+  background: rgba(0,0,0,0.35); color: #fff;
+  font-size: 20rpx; padding: 4rpx 10rpx; border-radius: 100rpx;
 }
 .plan-body { padding: 16rpx; }
 .plan-title {
   font-size: 26rpx; font-weight: 600; color: var(--text-primary); display: block;
-  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  margin-bottom: 6rpx;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 6rpx;
 }
 .plan-route { font-size: 22rpx; color: var(--text-tertiary); display: block; margin-bottom: 10rpx; }
 .plan-footer { display: flex; justify-content: space-between; align-items: center; }
@@ -262,9 +252,7 @@ function goCreate(destination?: string) {
 .plan-stats { display: flex; gap: 8rpx; font-size: 20rpx; color: var(--text-tertiary); }
 
 .loading-more, .no-more {
-  text-align: center;
-  padding: 32rpx;
-  font-size: 26rpx;
-  color: var(--text-tertiary);
+  text-align: center; padding: 32rpx;
+  font-size: 26rpx; color: var(--text-tertiary);
 }
 </style>

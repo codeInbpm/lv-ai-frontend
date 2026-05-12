@@ -3,16 +3,19 @@ import { ref, onMounted } from 'vue'
 import { usePlanStore } from '../../../stores/plan'
 import { useUserStore } from '../../../stores/user'
 import type { TravelPlan } from '../../../api/plan'
+import NavBar from '../../../components/common/NavBar.vue'
 
 const planStore = usePlanStore()
 const userStore = useUserStore()
 
 const plans = ref<TravelPlan[]>([])
+// undefined = 全部，0=草稿，1=未开始，2=进行中，3=已完成
 const activeTab = ref<number | undefined>(undefined)
 const loading = ref(true)
 
-const tabs = [
+const tabs: Array<{ label: string; value: number | undefined }> = [
   { label: '全部', value: undefined },
+  { label: '草稿', value: 0 },
   { label: '未开始', value: 1 },
   { label: '进行中', value: 2 },
   { label: '已完成', value: 3 }
@@ -45,6 +48,11 @@ async function switchTab(val: number | undefined) {
   await loadPlans()
 }
 
+/** 判断 tab 是否激活，对 undefined（全部）做特殊处理 */
+function isTabActive(tabVal: number | undefined) {
+  return activeTab.value === tabVal
+}
+
 function goDetail(planId: number) {
   uni.navigateTo({ url: `/pages/plan/detail/index?planId=${planId}` })
 }
@@ -71,18 +79,22 @@ async function deletePlan(planId: number) {
 
 <template>
   <view class="list-page">
+    <NavBar title="我的行程" fixed border />
+    
     <!-- Tabs -->
-    <view class="tabs">
-      <view
-        class="tab"
-        :class="{ active: activeTab === tab.value }"
-        v-for="tab in tabs"
-        :key="String(tab.value)"
-        @click="switchTab(tab.value)"
-      >
-        {{ tab.label }}
+    <scroll-view class="tabs-scroll" scroll-x>
+      <view class="tabs">
+        <view
+          class="tab"
+          :class="{ active: isTabActive(tab.value) }"
+          v-for="tab in tabs"
+          :key="String(tab.value)"
+          @click="switchTab(tab.value)"
+        >
+          {{ tab.label }}
+        </view>
       </view>
-    </view>
+    </scroll-view>
 
     <!-- 内容 -->
     <scroll-view class="scroll" scroll-y>
@@ -141,18 +153,23 @@ async function deletePlan(planId: number) {
 <style lang="scss" scoped>
 .list-page { min-height: 100vh; background: var(--bg-page); display: flex; flex-direction: column; }
 
-.tabs {
+.tabs-scroll {
   background: #fff;
-  display: flex;
+  white-space: nowrap;
   box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
 }
+.tabs {
+  display: inline-flex;
+  min-width: 100%;
+}
 .tab {
-  flex: 1;
-  padding: 24rpx 0;
+  flex-shrink: 0;
+  padding: 24rpx 40rpx;
   text-align: center;
   font-size: 28rpx;
   color: var(--text-tertiary);
   border-bottom: 4rpx solid transparent;
+  white-space: nowrap;
   &.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
 }
 

@@ -3,21 +3,22 @@ import { ref, onMounted } from 'vue'
 import { useUserStore } from '../../stores/user'
 import { discoverApi, type HotDestination } from '../../api/discover'
 import type { TravelPlan } from '../../api/plan'
+import NavBar from '../../components/common/NavBar.vue'
+import { useNavBar } from '../../composables/useNavBar'
 
 const userStore = useUserStore()
 const hotDestinations = ref<HotDestination[]>([])
 const publicPlans = ref<TravelPlan[]>([])
+
+const { totalHeight: navTotalHeight } = useNavBar()
+
 const bannerList = ref([
   { title: '三亚·蓝色天堂', tag: '海岛度假', gradient: 'linear-gradient(135deg, #0ea5e9, #06b6d4)' },
   { title: '云南·彩云之南', tag: '自然风光', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
   { title: '成都·慢生活', tag: '美食文化', gradient: 'linear-gradient(135deg, #f97316, #dc2626)' }
 ])
 
-const statusBarHeight = ref(0)
-
 onMounted(async () => {
-  const sysInfo = uni.getSystemInfoSync()
-  statusBarHeight.value = sysInfo.statusBarHeight || 20
   try {
     const [hot, plans] = await Promise.all([
       discoverApi.getHotDestinations(),
@@ -47,8 +48,20 @@ const features = [
 
 <template>
   <view class="index-page">
-    <!-- 顶部Header -->
-    <view class="header" :style="{ paddingTop: statusBarHeight + 'px' }">
+    <!-- 沉浸式导航栏，不插入占位（由 header 自己控制） -->
+    <NavBar
+      transparent
+      fixed
+      textColor="#ffffff"
+      background="linear-gradient(135deg, #0369a1, #0ea5e9)"
+      :placeholder="false"
+    />
+
+    <!-- 顶部 Header：包含导航栏占位 + 用户信息 -->
+    <view class="header">
+      <!-- 精确占位：等于导航栏实际高度 -->
+      <view :style="{ height: navTotalHeight + 'px' }" />
+
       <view class="header-content">
         <view>
           <text class="greeting">{{ userStore.userInfo?.nickname ? `你好，${userStore.userInfo.nickname}` : '你好，旅行者 👋' }}</text>
@@ -67,7 +80,6 @@ const features = [
         </view>
       </view>
 
-      <!-- 搜索/创建行程入口 -->
       <view class="create-btn" @click="goCreatePlan">
         <text class="create-icon">✨</text>
         <text class="create-text">AI智能规划，一键生成专属行程</text>
@@ -189,7 +201,7 @@ const features = [
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24rpx 0;
+  padding: 16rpx 0 24rpx;
 }
 
 .greeting {
@@ -205,10 +217,7 @@ const features = [
   display: block;
 }
 
-.avatar-wrap {
-  width: 80rpx;
-  height: 80rpx;
-}
+.avatar-wrap { width: 80rpx; height: 80rpx; }
 .avatar { width: 80rpx; height: 80rpx; border-radius: 50%; border: 3rpx solid rgba(255,255,255,0.5); }
 .avatar-placeholder {
   width: 80rpx; height: 80rpx;
@@ -231,14 +240,9 @@ const features = [
 .create-text { flex: 1; font-size: 28rpx; color: rgba(255,255,255,0.9); }
 .create-arrow { font-size: 32rpx; color: rgba(255,255,255,0.7); }
 
-.scroll-content {
-  flex: 1;
-  height: 0;
-}
+.scroll-content { flex: 1; height: 0; }
 
-.section {
-  padding: 32rpx 32rpx 0;
-}
+.section { padding: 32rpx 32rpx 0; }
 
 .features-section {
   display: flex;
@@ -338,8 +342,10 @@ const features = [
   flex-shrink: 0;
 }
 .plan-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
-.plan-title { font-size: 30rpx; font-weight: 600; color: var(--text-primary); margin-bottom: 8rpx;
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.plan-title {
+  font-size: 30rpx; font-weight: 600; color: var(--text-primary); margin-bottom: 8rpx;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 .plan-route { font-size: 24rpx; color: var(--text-secondary); margin-bottom: 12rpx; }
 .plan-meta { display: flex; align-items: center; gap: 16rpx; }
 .plan-days {

@@ -9,6 +9,23 @@ interface RequestOptions {
   showLoading?: boolean
 }
 
+/**
+ * 清理请求参数：过滤掉值为 undefined 或 null 的字段，
+ * 防止 uni.request 将 undefined 序列化为字符串 "undefined" 发送给后端。
+ */
+function cleanParams(data: any): any {
+  if (data === null || data === undefined) return undefined
+  if (typeof data !== 'object' || Array.isArray(data)) return data
+  const result: Record<string, any> = {}
+  for (const key of Object.keys(data)) {
+    const val = data[key]
+    if (val !== undefined && val !== null) {
+      result[key] = val
+    }
+  }
+  return Object.keys(result).length ? result : undefined
+}
+
 export function request<T = any>(options: RequestOptions): Promise<T> {
   const { url, method = 'GET', data, showLoading = false } = options
   const userStore = useUserStore()
@@ -17,11 +34,14 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
     uni.showLoading({ title: '加载中...', mask: true })
   }
 
+  // GET 请求过滤 undefined/null 参数
+  const cleanedData = method === 'GET' ? cleanParams(data) : data
+
   return new Promise((resolve, reject) => {
     uni.request({
       url: BASE_URL + url,
       method,
-      data,
+      data: cleanedData,
       header: {
         'Content-Type': 'application/json',
         Authorization: userStore.token || ''

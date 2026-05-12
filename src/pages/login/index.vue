@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useUserStore } from '../../stores/user'
+import NavBar from '../../components/common/NavBar.vue'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -16,10 +17,18 @@ async function handleWxLogin() {
     loading.value = false
   }
 }
+
+const features = [
+  { icon: '🤖', title: 'AI 智能规划', desc: '根据偏好一键生成个性化行程' },
+  { icon: '🗺️', title: '精选攻略', desc: '发现海量真实旅行笔记与路线' },
+  { icon: '📷', title: '旅行打卡', desc: '记录精彩瞬间，永存旅行记忆' }
+]
 </script>
 
 <template>
   <view class="login-page">
+    <NavBar transparent fixed back textColor="#ffffff" />
+    
     <!-- 背景装饰 -->
     <view class="bg-decor">
       <view class="circle circle-1" />
@@ -73,7 +82,7 @@ async function handleWxLogin() {
   flex-direction: column;
   align-items: center;
   padding: 0 48rpx;
-  padding-top: calc(120rpx + env(safe-area-inset-top));
+  padding-top: calc(180rpx + env(safe-area-inset-top));
   padding-bottom: calc(60rpx + env(safe-area-inset-bottom));
 }
 
