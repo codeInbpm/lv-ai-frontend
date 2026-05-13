@@ -105,6 +105,20 @@
         "navigationBarTitleText": "攻略详情",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/plan/item/index",
+      "style": {
+        "navigationBarTitleText": "行程明细",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/chat/index",
+      "style": {
+        "navigationBarTitleText": "旅途管家",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

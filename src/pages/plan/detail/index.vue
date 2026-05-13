@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { planApi, type PlanDetailVO, type TravelItem, type DayWithItems } from '../../../api/plan'
+import { http } from '../../../utils/request'
 import NavBar from '../../../components/common/NavBar.vue'
 import { useNavBar } from '../../../composables/useNavBar'
 
@@ -18,7 +19,30 @@ onLoad((options: any) => {
 onMounted(async () => {
   if (planId.value) {
     try {
-      detail.value = await planApi.getPlanDetail(planId.value)
+      const [detailRes, checkinsRes] = await Promise.all([
+        planApi.getPlanDetail(planId.value),
+        http.get(`/plan/${planId.value}/checkins`)
+      ])
+      
+      const detailData = detailRes
+      const checkins = (checkinsRes || []) as any[]
+      
+      // Merge checkins into items
+      detailData.days.forEach(day => {
+        day.items.forEach(item => {
+          const record = checkins.find(c => c.itemId === item.id)
+          if (record) {
+            item.checkedIn = 1
+            item.checkinRecord = record
+            if (record.images && typeof record.images === 'string') {
+               try { item.checkinRecord.images = JSON.parse(record.images) } catch {}
+            }
+          }
+        })
+      })
+      detail.value = detailData
+      
+      uni.$on('refreshPlanDetail', loadData)
     } catch {
       uni.showToast({ title: '加载失败', icon: 'none' })
     } finally {
@@ -26,6 +50,29 @@ onMounted(async () => {
     }
   }
 })
+
+async function loadData() {
+  if (!planId.value) return
+  const [detailRes, checkinsRes] = await Promise.all([
+    planApi.getPlanDetail(planId.value),
+    http.get(`/plan/${planId.value}/checkins`)
+  ])
+  const detailData = detailRes
+  const checkins = (checkinsRes || []) as any[]
+  detailData.days.forEach(day => {
+    day.items.forEach(item => {
+      const record = checkins.find(c => c.itemId === item.id)
+      if (record) {
+        item.checkedIn = 1
+        item.checkinRecord = record
+        if (record.images && typeof record.images === 'string') {
+           try { item.checkinRecord.images = JSON.parse(record.images) } catch {}
+        }
+      }
+    })
+  })
+  detail.value = detailData
+}
 
 const plan = computed(() => detail.value?.plan)
 const days = computed(() => detail.value?.days ?? [])
@@ -85,6 +132,39 @@ async function checkIn(item: TravelItem) {
       }
     }
   })
+}
+
+// 点击行程单项
+function handleItemClick(item: any) {
+  if (item.type === 4) {
+    uni.showModal({
+      title: '前往预订',
+      content: '即将跳转到携程/12306小程序',
+      confirmText: '跳转',
+      success: (res) => {
+        if (res.confirm) {
+          // 这里预留第三方小程序的 appId
+          /*
+          uni.navigateToMiniProgram({
+            appId: 'wx0e6ed4f545c4fc82', // 携程小程序appId(示例)
+            path: 'pages/home/index',
+            success(res) {}
+          })
+          */
+          uni.showToast({ title: '体验版暂未关联外部小程序', icon: 'none' })
+        }
+      }
+    })
+    return
+  }
+  
+  // 普通节点进入详情
+  uni.setStorageSync('currentPlanItem', { ...item, planId: planId.value })
+  uni.navigateTo({ url: `/pages/plan/item/index?id=${item.id}` })
+}
+
+function goChat() {
+  uni.navigateTo({ url: `/pages/chat/index?planId=${planId.value}` })
 }
 
 function sharePlan() {
@@ -195,14 +275,14 @@ function sharePlan() {
               </view>
 
               <!-- 活动卡片 -->
-              <view class="item-card" :class="{ checked: item.checkedIn }">
+              <view class="item-card" :class="{ checked: item.checkedIn }" @click="handleItemClick(item)">
                 <!-- 卡片头部 -->
                 <view class="item-card-header">
                   <text class="item-name">{{ item.name }}</text>
                   <view
                     class="checkin-btn"
                     :class="{ done: item.checkedIn }"
-                    @click="checkIn(item)"
+                    @click.stop="item.checkedIn ? null : handleItemClick(item)"
                   >
                     <text>{{ item.checkedIn ? '✓已打卡' : '打卡' }}</text>
                   </view>
@@ -231,6 +311,18 @@ function sharePlan() {
                   <text class="tips-icon">💡</text>
                   <text class="tips-text">{{ item.tips }}</text>
                 </view>
+                
+                <!-- 历史打卡记录区 -->
+                <view class="checkin-record-box" v-if="item.checkinRecord">
+                  <view class="record-header">
+                    <text class="record-title">📸 我的打卡足迹</text>
+                    <text class="record-cost" v-if="item.checkinRecord.cost > 0">花费: ¥{{ item.checkinRecord.cost }}</text>
+                  </view>
+                  <text class="record-content" v-if="item.checkinRecord.content">{{ item.checkinRecord.content }}</text>
+                  <view class="record-images" v-if="item.checkinRecord.images && item.checkinRecord.images.length > 0">
+                    <image v-for="(img, imgIdx) in item.checkinRecord.images" :key="imgIdx" :src="img" mode="aspectFill" class="r-img" />
+                  </view>
+                </view>
               </view>
             </view>
 
@@ -254,7 +346,7 @@ function sharePlan() {
     <!-- 底部操作栏 -->
     <view class="footer" v-if="plan">
       <button class="footer-btn secondary" @click="sharePlan">分享行程</button>
-      <button class="footer-btn primary" @click="uni.navigateTo({ url: `/pages/plan/create/index` })">私信修改</button>
+      <button class="footer-btn primary" @click="goChat">智能旅伴 / 修改</button>
     </view>
   </view>
 </template>
@@ -553,6 +645,46 @@ function sharePlan() {
   padding: 80rpx;
   color: #94a3b8;
   font-size: 28rpx;
+}
+
+.checkin-record-box {
+  margin-top: 24rpx;
+  padding: 20rpx;
+  background: #f8fafc;
+  border-radius: 16rpx;
+  border: 1rpx solid #e2e8f0;
+}
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.record-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #0369a1;
+}
+.record-cost {
+  font-size: 24rpx;
+  color: #ef4444;
+  font-weight: bold;
+}
+.record-content {
+  font-size: 26rpx;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 16rpx;
+  display: block;
+}
+.record-images {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+.r-img {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 12rpx;
 }
 
 /* ── 加载 ── */

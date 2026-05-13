@@ -48,6 +48,43 @@ onMounted(() => {
     form.destination = prefill
     uni.removeStorageSync('prefillDestination')
   }
+
+  // 立即询问地理位置授权
+  uni.getLocation({
+    type: 'gcj02',
+    success: (res) => {
+      form.departureLat = res.latitude
+      form.departureLng = res.longitude
+      
+      // 调用腾讯地图反解析 (带重试机制)
+      const fetchLocation = (retryCount = 0) => {
+        uni.request({
+          url: `https://apis.map.qq.com/ws/geocoder/v1/?location=${res.latitude},${res.longitude}&key=66ABZ-QFMRI-BQWGG-UTPBO-NEZA3-SLFGI`,
+          method: 'GET',
+          success: (response: any) => {
+            if (response.data && response.data.status === 0) {
+              const adInfo = response.data.result.ad_info || response.data.result.address_component
+              form.departure = adInfo.city || adInfo.province || '当前位置'
+            } else if (response.data && response.data.status === 120 && retryCount < 2) {
+              // 触发并发限制，延迟 500ms 重试
+              setTimeout(() => fetchLocation(retryCount + 1), 500)
+            } else {
+              form.departure = response.data?.message ? `解析失败:${response.data.message}` : '定位成功(解析失败)'
+              console.error('腾讯地图解析失败:', response.data)
+            }
+          },
+          fail: () => {
+            form.departure = '定位成功(请求失败)'
+          }
+        })
+      }
+      
+      fetchLocation()
+    },
+    fail: () => {
+      console.log('获取地理位置失败或用户拒绝')
+    }
+  })
 })
 
 function chooseLocation(type: 'departure' | 'destination') {
@@ -86,7 +123,7 @@ async function handleSubmit() {
   uni.showLoading({ title: 'AI规划中...', mask: true })
 
   try {
-    const planId = await planStore.startPlanGeneration({
+    const result = await planStore.createPlan({
       departure: form.departure,
       destination: form.destination,
       startDate: form.startDate,
@@ -100,7 +137,7 @@ async function handleSubmit() {
     uni.hideLoading()
     // 跳转到结果页，开启流式显示
     uni.navigateTo({
-      url: `/pages/plan/result/index?planId=${planId}&streaming=true`
+      url: `/pages/plan/result/index?planId=${result.plan.id}&streaming=true`
     })
   } catch (err) {
     uni.hideLoading()
