@@ -91,8 +91,8 @@ export interface PageResult<T> {
 }
 
 export const planApi = {
-  /** AI生成行程 */
-  createPlan: (data: CreatePlanDTO) => http.post<PlanDetailVO>('/plan/create', data, true),
+  /** AI生成行程 (等待时间较长，设置2分钟超时) */
+  createPlan: (data: CreatePlanDTO) => http.post<PlanDetailVO>('/plan/create', data, true, 120000),
   /** 获取行程详情 */
   getPlanDetail: (planId: number) => http.get<PlanDetailVO>(`/plan/${planId}`),
   /** 我的行程列表 */

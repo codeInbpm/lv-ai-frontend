@@ -7,6 +7,7 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   data?: any
   showLoading?: boolean
+  timeout?: number
 }
 
 /**
@@ -42,6 +43,7 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
       url: BASE_URL + url,
       method,
       data: cleanedData,
+      timeout: options.timeout || 60000,
       header: {
         'Content-Type': 'application/json',
         Authorization: userStore.token || ''
@@ -70,12 +72,12 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
 }
 
 export const http = {
-  get: <T = any>(url: string, data?: any, showLoading?: boolean) =>
-    request<T>({ url, method: 'GET', data, showLoading }),
-  post: <T = any>(url: string, data?: any, showLoading?: boolean) =>
-    request<T>({ url, method: 'POST', data, showLoading }),
-  put: <T = any>(url: string, data?: any) =>
-    request<T>({ url, method: 'PUT', data }),
+  get: <T = any>(url: string, data?: any, showLoading?: boolean, timeout?: number) =>
+    request<T>({ url, method: 'GET', data, showLoading, timeout }),
+  post: <T = any>(url: string, data?: any, showLoading?: boolean, timeout?: number) =>
+    request<T>({ url, method: 'POST', data, showLoading, timeout }),
+  put: <T = any>(url: string, data?: any, timeout?: number) =>
+    request<T>({ url, method: 'PUT', data, timeout }),
   del: <T = any>(url: string, data?: any) =>
     request<T>({ url, method: 'DELETE', data })
 }
