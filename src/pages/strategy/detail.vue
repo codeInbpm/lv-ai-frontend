@@ -53,9 +53,29 @@ async function fetchDetail(id: string) {
           <text class="meta-text">浏览: {{ detail.viewCount }}</text>
         </view>
 
+        <!-- AI 摘要 -->
+        <view class="ai-box" v-if="detail.aiSummary">
+          <view class="ai-header">
+            <text class="ai-icon">✨</text>
+            <text class="ai-title">AI 核心摘要</text>
+          </view>
+          <text class="ai-content">{{ detail.aiSummary }}</text>
+        </view>
+
         <!-- 正文 -->
         <view class="article-content">
           <text class="text">{{ detail.content }}</text>
+        </view>
+
+        <!-- AI 提取行程 -->
+        <view class="ai-itinerary" v-if="detail.aiItinerary">
+          <view class="ai-header">
+            <text class="ai-icon">🗺️</text>
+            <text class="ai-title">AI 提取行程</text>
+          </view>
+          <view class="itinerary-list">
+             <text class="ai-content" style="white-space: pre-wrap; font-size: 26rpx; color: #475569;">{{ detail.aiItinerary }}</text>
+          </view>
         </view>
       </view>
       
@@ -157,7 +177,25 @@ async function fetchDetail(id: string) {
   color: var(--text-primary);
   line-height: 1.8;
   white-space: pre-wrap;
+  margin-bottom: 40rpx;
 }
+
+.ai-box, .ai-itinerary {
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 32rpx;
+  border: 1rpx solid #bae6fd;
+}
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+.ai-icon { font-size: 32rpx; }
+.ai-title { font-size: 28rpx; font-weight: 700; color: #0369a1; }
+.ai-content { font-size: 26rpx; color: #0f172a; line-height: 1.6; }
 
 .bottom-action {
   position: fixed;
