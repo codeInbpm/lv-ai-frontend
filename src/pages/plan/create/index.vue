@@ -23,9 +23,18 @@ const form = reactive({
 })
 
 const preferenceOptions = [
-  '历史古迹', '自然风光', '美食探索', '购物娱乐', 
-  '户外运动', '亲子友好', '摄影打卡', '慢节奏'
+  { label: '🍜 美食', value: '美食' },
+  { label: '📷 摄影', value: '摄影' },
+  { label: '👨‍👩‍👧 亲子', value: '亲子' },
+  { label: '💑 情侣', value: '情侣' },
+  { label: '🚗 自驾', value: '自驾' },
+  { label: '🏕️ 户外', value: '户外' },
+  { label: '🎨 文艺', value: '文艺' },
+  { label: '🛍️ 购物', value: '购物' },
+  { label: '🏛️ 历史', value: '历史' },
+  { label: '🌊 海岛', value: '海岛' }
 ]
+
 
 onMounted(() => {
   // 设置默认日期为明天
@@ -164,16 +173,15 @@ async function handleSubmit() {
         <view class="form-item">
           <text class="label">兴趣点 (多选)</text>
           <view class="tag-list">
-            <view 
-              class="tag" 
-              :class="{ active: form.preferences.includes(item) }"
-              v-for="item in preferenceOptions"
-              :key="item"
-              @click="togglePreference(item)"
+            <view
+                class="tag"
+                :class="{ active: form.preferences.includes(opt.value) }"
+                v-for="opt in preferenceOptions"
+                :key="opt.value"
+                @click="togglePreference(opt.value)"
             >
-              {{ item }}
-            </view>
-          </view>
+              {{ opt.label }}
+            </view>          </view>
         </view>
       </view>
 
@@ -276,16 +284,27 @@ async function handleSubmit() {
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 16rpx;
+  gap: 20rpx;
 }
 .tag {
-  background: #f1f5f9;
+  background: #f8fafc;
   color: var(--text-secondary);
-  font-size: 24rpx;
-  padding: 12rpx 24rpx;
-  border-radius: 100rpx;
+  font-size: 26rpx;
+  padding: 16rpx 28rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid #f1f5f9;
   transition: all 0.2s;
-  &.active { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tag.active {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #0ea5e9;
+  font-weight: 600;
+  transform: translateY(-2rpx);
+  box-shadow: 0 4rpx 12rpx rgba(14, 165, 233, 0.15);
 }
 
 .textarea {

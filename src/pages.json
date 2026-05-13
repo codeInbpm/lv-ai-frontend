@@ -84,11 +84,32 @@
         "navigationBarTitleText": "记账统计",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/strategy/index",
+      "style": {
+        "navigationBarTitleText": "精选攻略",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/strategy/publish",
+      "style": {
+        "navigationBarTitleText": "发布攻略",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/strategy/detail",
+      "style": {
+        "navigationBarTitleText": "攻略详情",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {
     "color": "#94a3b8",
-    "selectedColor": "#0ea5e9",
+    "selectedColor": "#ec4899",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [

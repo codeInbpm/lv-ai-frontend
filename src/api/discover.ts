@@ -12,5 +12,8 @@ export const discoverApi = {
   getPublicPlans: (params?: { keyword?: string; destination?: string; page?: number; size?: number }) =>
     http.get<PageResult<TravelPlan>>('/discover/list', params),
   /** 热门目的地 */
-  getHotDestinations: () => http.get<HotDestination[]>('/discover/hot')
+  getHotDestinations: () => http.get<HotDestination[]>('/discover/hot'),
+  /** 精选攻略列表 */
+  getStrategies: (params?: { source?: string; keyword?: string; page?: number; size?: number }) =>
+    http.get<any>('/strategy/list', params)
 }

@@ -8,7 +8,7 @@ import { useNavBar } from '../../composables/useNavBar'
 
 const userStore = useUserStore()
 const hotDestinations = ref<HotDestination[]>([])
-const publicPlans = ref<TravelPlan[]>([])
+const strategyList = ref<any[]>([])
 
 const { totalHeight: navTotalHeight } = useNavBar()
 
@@ -20,12 +20,12 @@ const bannerList = ref([
 
 onMounted(async () => {
   try {
-    const [hot, plans] = await Promise.all([
+    const [hot, strategiesRes] = await Promise.all([
       discoverApi.getHotDestinations(),
-      discoverApi.getPublicPlans({ size: 4 })
+      discoverApi.getStrategies({ size: 3 })
     ])
     hotDestinations.value = hot
-    publicPlans.value = plans.records
+    strategyList.value = strategiesRes?.records || []
   } catch {}
 })
 
@@ -34,8 +34,8 @@ function goCreatePlan() {
   uni.navigateTo({ url: '/pages/plan/create/index' })
 }
 
-function goPlanDetail(planId: number) {
-  uni.navigateTo({ url: `/pages/plan/detail/index?planId=${planId}` })
+function goStrategyDetail(id: number) {
+  uni.navigateTo({ url: `/pages/strategy/detail?id=${id}` })
 }
 
 const features = [
@@ -157,27 +157,27 @@ function goDestinationDetail(id: number) {
       </view>
 
       <!-- 精选攻略 -->
-      <view class="section" v-if="publicPlans.length">
+      <view class="section" v-if="strategyList.length">
         <view class="section-header">
           <text class="section-title">精选攻略</text>
-          <text class="section-more" @click="uni.switchTab({url:'/pages/discover/index'})">更多 ›</text>
+          <text class="section-more" @click="uni.navigateTo({url:'/pages/strategy/index'})">更多 ›</text>
         </view>
         <view class="plan-list">
           <view
             class="plan-card"
-            v-for="plan in publicPlans"
-            :key="plan.id"
-            @click="goPlanDetail(plan.id)"
+            v-for="item in strategyList"
+            :key="item.id"
+            @click="goStrategyDetail(item.id)"
           >
-            <view class="plan-cover">
-              <text class="plan-emoji">✈️</text>
-            </view>
+            <image class="plan-cover" :src="item.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
             <view class="plan-info">
-              <text class="plan-title">{{ plan.title }}</text>
-              <text class="plan-route">{{ plan.departure }} → {{ plan.destination }}</text>
+              <text class="plan-title">{{ item.title }}</text>
+              <view style="display:flex;gap:10rpx;margin-bottom:12rpx;">
+                 <text class="plan-days" style="background:#e0f2fe;color:#0284c7">{{ item.source === 'internal' ? '站内推荐' : '全网精选' }}</text>
+                 <text class="plan-days" v-if="item.destination">{{ item.destination }}</text>
+              </view>
               <view class="plan-meta">
-                <text class="plan-days">{{ plan.days }}天</text>
-                <text class="plan-collect">❤️ {{ plan.collectCount }}</text>
+                <text class="plan-collect">❤️ {{ item.likeCount }} 👁️ {{ item.viewCount }}</text>
               </view>
             </view>
           </view>
