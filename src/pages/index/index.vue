@@ -21,10 +21,10 @@ const bannerList = ref([
 onMounted(async () => {
   try {
     const [hot, strategiesRes] = await Promise.all([
-      discoverApi.getHotDestinations(),
-      discoverApi.getStrategies({ size: 3 })
+      discoverApi.getHotDestinations().catch(() => []),
+      discoverApi.getStrategies({ size: 3 }).catch(() => null)
     ])
-    hotDestinations.value = hot
+    hotDestinations.value = hot || []
     strategyList.value = strategiesRes?.records || []
   } catch {}
 })
