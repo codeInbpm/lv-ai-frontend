@@ -56,6 +56,34 @@
         "navigationBarTitleText": "我的",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/map/explore/index",
+      "style": {
+        "navigationBarTitleText": "地图导览",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/destination/detail/index",
+      "style": {
+        "navigationBarTitleText": "目的地详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/footprint/index",
+      "style": {
+        "navigationBarTitleText": "旅行打卡",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/expense/index",
+      "style": {
+        "navigationBarTitleText": "记账统计",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

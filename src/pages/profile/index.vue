@@ -142,7 +142,7 @@ async function handleLogout() {
           <text class="menu-label">我的收藏</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item" @click="uni.showToast({ title: '功能开发中', icon: 'none' })">
+        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/footprint/index' })">
           <text class="menu-icon">🗺️</text>
           <text class="menu-label">我的足迹</text>
           <text class="menu-arrow">›</text>

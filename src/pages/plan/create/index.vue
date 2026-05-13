@@ -41,6 +41,25 @@ onMounted(() => {
   }
 })
 
+function chooseLocation(type: 'departure' | 'destination') {
+  uni.chooseLocation({
+    success: (res) => {
+      if (type === 'departure') {
+        form.departure = res.name || res.address
+        form.departureLat = res.latitude
+        form.departureLng = res.longitude
+      } else {
+        form.destination = res.name || res.address
+        form.destinationLat = res.latitude
+        form.destinationLng = res.longitude
+      }
+    },
+    fail: (err) => {
+      console.log('chooseLocation fail', err)
+    }
+  })
+}
+
 function togglePreference(item: string) {
   const index = form.preferences.indexOf(item)
   if (index > -1) {
@@ -91,12 +110,18 @@ async function handleSubmit() {
         
         <view class="form-item">
           <text class="label">出发地</text>
-          <input v-model="form.departure" class="input" placeholder="你在哪里？" />
+          <view class="input location-input" @click="chooseLocation('departure')">
+            <text :class="{'placeholder-text': !form.departure}">{{ form.departure || '你在哪里？' }}</text>
+            <text class="location-icon">📍</text>
+          </view>
         </view>
         
         <view class="form-item">
           <text class="label">目的地</text>
-          <input v-model="form.destination" class="input" placeholder="想去哪里？" />
+          <view class="input location-input" @click="chooseLocation('destination')">
+            <text :class="{'placeholder-text': !form.destination}">{{ form.destination || '想去哪里？' }}</text>
+            <text class="location-icon">📍</text>
+          </view>
         </view>
         
         <view class="form-item">
@@ -217,6 +242,15 @@ async function handleSubmit() {
   align-items: center;
   border: 1rpx solid transparent;
   &:focus { border-color: var(--primary-light); background: #fff; }
+}
+.location-input {
+  justify-content: space-between;
+}
+.placeholder-text {
+  color: #94a3b8;
+}
+.location-icon {
+  font-size: 32rpx;
 }
 
 .counter {

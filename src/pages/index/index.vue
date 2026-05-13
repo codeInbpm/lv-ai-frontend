@@ -39,11 +39,22 @@ function goPlanDetail(planId: number) {
 }
 
 const features = [
-  { icon: '🤖', label: 'AI规划', color: '#0ea5e9' },
-  { icon: '🗺️', label: '地图导览', color: '#10b981' },
-  { icon: '📷', label: '旅行打卡', color: '#f97316' },
-  { icon: '💰', label: '记账统计', color: '#8b5cf6' }
+  { icon: '🤖', label: 'AI规划', color: '#0ea5e9', path: '/pages/plan/create/index' },
+  { icon: '🗺️', label: '地图导览', color: '#10b981', path: '/pages/map/explore/index' },
+  { icon: '📷', label: '旅行打卡', color: '#f97316', path: '/pages/footprint/index' },
+  { icon: '💰', label: '记账统计', color: '#8b5cf6', path: '/pages/expense/index' }
 ]
+
+function goFeature(path: string) {
+  if (!userStore.requireLogin()) return
+  if(path) {
+    uni.navigateTo({ url: path })
+  }
+}
+
+function goDestinationDetail(id: number) {
+  uni.navigateTo({ url: `/pages/destination/detail/index?id=${id}` })
+}
 </script>
 
 <template>
@@ -96,7 +107,7 @@ const features = [
           class="feature-card"
           v-for="feat in features"
           :key="feat.label"
-          @click="goCreatePlan"
+          @click="goFeature(feat.path)"
         >
           <view class="feat-icon-wrap" :style="{ background: feat.color + '20' }">
             <text class="feat-icon">{{ feat.icon }}</text>
@@ -133,7 +144,7 @@ const features = [
               class="hot-item"
               v-for="dest in hotDestinations"
               :key="dest.name"
-              @click="goCreatePlan"
+              @click="goDestinationDetail(dest.id)"
             >
               <view class="hot-img-wrap">
                 <text class="hot-emoji">🏔</text>
