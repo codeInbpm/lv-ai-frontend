@@ -9,6 +9,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'reply', comment: any, rootParentId: number): void
   (e: 'like', comment: any): void
+  (e: 'delete', comment: any): void
 }>()
 
 const isExpanded = ref(false)
@@ -32,7 +33,8 @@ const dfsList = computed(() => {
   function dfs(nodeId: number, depth: number) {
     const directChildren = childrenMap.get(nodeId) || []
     directChildren.forEach(child => {
-      result.push({ ...child, depth })
+      child._depth = depth
+      result.push(child)
       dfs(child.id, depth + 1)
     })
   }
@@ -51,18 +53,37 @@ function handleReply(targetComment: any) {
 function handleLike(targetComment: any) {
   emit('like', targetComment)
 }
+
+function handleLongPress(targetComment: any) {
+  emit('delete', targetComment)
+}
+
+function formatTime(timeStr: string) {
+  if (!timeStr) return '刚刚'
+  // Convert standard date string to valid date in iOS (replace - with /)
+  const validTimeStr = timeStr.replace(/-/g, '/')
+  const date = new Date(validTimeStr)
+  const now = new Date()
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000) // in seconds
+
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+  if (diff < 86400 * 30) return `${Math.floor(diff / 86400)}天前`
+  return timeStr.split(' ')[0]
+}
 </script>
 
 <template>
-  <view class="comment-node" :class="{ 'is-child': !isRoot }" @click.stop="handleReply(comment)">
+  <view class="comment-node" :class="{ 'is-child': !isRoot }" @click.stop="handleReply(comment)" @longpress.stop="handleLongPress(comment)">
     <image class="avatar" :src="comment.avatar || 'https://api.dicebear.com/7.x/adventurer/svg?seed=' + comment.id" mode="aspectFill" />
     
     <view class="content-area">
       <view class="header">
         <text class="nickname">{{ comment.nickname || '神秘旅人' }}</text>
         <!-- B站风格点赞 -->
-        <view class="like-btn" @click.stop="handleLike(comment)">
-          <text class="like-icon">🤍</text>
+        <view class="like-btn" :class="{ active: comment.hasLiked }" @click.stop="handleLike(comment)">
+          <text class="like-icon">{{ comment.hasLiked ? '❤️' : '🤍' }}</text>
           <text class="like-num" v-if="comment.likeCount">{{ comment.likeCount }}</text>
         </view>
       </view>
@@ -76,20 +97,20 @@ function handleLike(targetComment: any) {
       </view>
       
       <view class="footer">
-        <text class="time">{{ comment.createTime?.split(' ')[0] || '刚刚' }}</text>
+        <text class="time">{{ formatTime(comment.createTime) }}</text>
         <text class="reply-action" @click.stop="handleReply(comment)">回复</text>
       </view>
 
       <!-- 子评论区域 -->
       <view class="children-box" v-if="isRoot && dfsList.length > 0">
         <block v-for="(child, index) in dfsList" :key="child.id">
-          <view v-if="index < displayCount || isExpanded" class="comment-node is-child" :style="{ marginLeft: ((child.depth - 1) * 40) + 'rpx' }" @click.stop="handleReply(child)">
+          <view v-if="index < displayCount || isExpanded" class="comment-node is-child" :style="{ marginLeft: ((child._depth - 1) * 40) + 'rpx' }" @click.stop="handleReply(child)" @longpress.stop="handleLongPress(child)">
             <image class="avatar" :src="child.avatar || 'https://api.dicebear.com/7.x/adventurer/svg?seed=' + child.id" mode="aspectFill" />
             <view class="content-area">
               <view class="header">
                 <text class="nickname">{{ child.nickname || '神秘旅人' }}</text>
-                <view class="like-btn" @click.stop="handleLike(child)">
-                  <text class="like-icon">🤍</text>
+                <view class="like-btn" :class="{ active: child.hasLiked }" @click.stop="handleLike(child)">
+                  <text class="like-icon">{{ child.hasLiked ? '❤️' : '🤍' }}</text>
                   <text class="like-num" v-if="child.likeCount">{{ child.likeCount }}</text>
                 </view>
               </view>
@@ -100,7 +121,7 @@ function handleLike(targetComment: any) {
                 {{ child.content }}
               </view>
               <view class="footer">
-                <text class="time">{{ child.createTime?.split(' ')[0] || '刚刚' }}</text>
+                <text class="time">{{ formatTime(child.createTime) }}</text>
                 <text class="reply-action" @click.stop="handleReply(child)">回复</text>
               </view>
             </view>
@@ -164,6 +185,9 @@ function handleLike(targetComment: any) {
   gap: 6rpx;
   color: #94a3b8;
   font-size: 24rpx;
+  &.active {
+    color: #ef4444; // Tailwind red-500
+  }
 }
 .like-icon { font-size: 28rpx; }
 

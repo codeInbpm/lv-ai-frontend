@@ -16,6 +16,7 @@ const isTyping = ref(false)
 const isInputFocused = ref(false)
 const commentContent = ref('')
 const replyingTo = ref<CommentVO | null>(null)
+const sortType = ref<'latest' | 'hot'>('latest')
 
 onLoad((options: any) => {
   if (options.id) {
@@ -48,7 +49,7 @@ async function fetchInteractionStatus(id: string) {
 
 async function fetchComments(id: string) {
   try {
-    const res = await strategyApi.getComments(id)
+    const res = await strategyApi.getComments(id, sortType.value)
     comments.value = res || []
   } catch (e) {
     console.error(e)
@@ -137,6 +138,56 @@ async function submitComment() {
     uni.hideLoading()
   }
 }
+
+function changeSort(type: 'latest' | 'hot') {
+  if (sortType.value === type) return
+  sortType.value = type
+  if (detail.value) {
+    fetchComments(detail.value.id)
+  }
+}
+
+async function handleCommentLike(comment: CommentVO) {
+  if (!userStore.requireLogin()) return
+  try {
+    const isLiked = await strategyApi.toggleCommentLike(comment.id)
+    comment.hasLiked = isLiked
+    if (comment.likeCount === undefined) comment.likeCount = 0
+    comment.likeCount += isLiked ? 1 : -1
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+function handleCommentDelete(comment: CommentVO) {
+  if (!userStore.requireLogin()) return
+  // Only allow deleting own comments
+  if (comment.userId !== userStore.userInfo?.id) {
+    uni.showToast({ title: '只能删除自己的评论', icon: 'none' })
+    return
+  }
+  
+  uni.showActionSheet({
+    itemList: ['删除我的评论'],
+    itemColor: '#ef4444',
+    success: async (res) => {
+      if (res.tapIndex === 0) {
+        try {
+          uni.showLoading({ title: '删除中' })
+          await strategyApi.deleteComment(comment.id)
+          uni.hideLoading()
+          uni.showToast({ title: '已删除', icon: 'success' })
+          if (detail.value) {
+            detail.value.commentCount = Math.max(0, detail.value.commentCount - 1)
+            fetchComments(detail.value.id)
+          }
+        } catch (e) {
+          uni.hideLoading()
+        }
+      }
+    }
+  })
+}
 </script>
 
 <template>
@@ -175,7 +226,14 @@ async function submitComment() {
 
         <!-- 评论列表区 -->
         <view class="comments-section" id="comments">
-          <view class="section-title">全部评论 ({{ detail.commentCount }})</view>
+          <view class="section-header">
+            <text class="section-title">全部评论 ({{ detail.commentCount }})</text>
+            <view class="sort-tabs" v-if="comments.length > 0">
+              <text class="sort-tab" :class="{ active: sortType === 'latest' }" @click="changeSort('latest')">最新</text>
+              <text class="sort-divider">|</text>
+              <text class="sort-tab" :class="{ active: sortType === 'hot' }" @click="changeSort('hot')">最热</text>
+            </view>
+          </view>
           <view v-if="comments.length === 0" class="empty-comment">
             暂无评论，快来抢沙发吧~
           </view>
@@ -186,6 +244,8 @@ async function submitComment() {
               :comment="item" 
               :is-root="true"
               @reply="handleCommentReply"
+              @like="handleCommentLike"
+              @delete="handleCommentDelete"
             />
           </view>
         </view>
@@ -311,8 +371,33 @@ async function submitComment() {
   border-top: 1rpx solid #f1f5f9;
   padding-top: 40rpx;
 }
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32rpx;
+}
 .section-title {
-  font-size: 32rpx; font-weight: 700; color: #1e293b; margin-bottom: 32rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1e293b;
+}
+.sort-tabs {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.sort-tab {
+  font-size: 26rpx;
+  color: #94a3b8;
+  &.active {
+    color: #0f172a;
+    font-weight: 500;
+  }
+}
+.sort-divider {
+  font-size: 20rpx;
+  color: #cbd5e1;
 }
 .empty-comment {
   padding: 60rpx 0; text-align: center; color: #94a3b8; font-size: 26rpx;
