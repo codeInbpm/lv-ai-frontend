@@ -2,26 +2,139 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/common/NavBar.vue'
-import { http } from '../../utils/request'
+import { strategyApi, type CommentVO } from '../../api/strategy'
+import { useUserStore } from '../../stores/user'
+import CommentTree from '../../components/comment/CommentTree.vue'
 
+const userStore = useUserStore()
 const detail = ref<any>(null)
 const loading = ref(true)
+const comments = ref<CommentVO[]>([])
+const interactionStatus = ref({ hasLiked: false, hasCollected: false })
+
+const isTyping = ref(false)
+const isInputFocused = ref(false)
+const commentContent = ref('')
+const replyingTo = ref<CommentVO | null>(null)
 
 onLoad((options: any) => {
   if (options.id) {
     fetchDetail(options.id)
+    fetchInteractionStatus(options.id)
+    fetchComments(options.id)
   }
 })
 
 async function fetchDetail(id: string) {
   try {
     loading.value = true
-    const res = await http.get(`/strategy/${id}/detail`)
+    const res = await strategyApi.getDetail(id)
     detail.value = res
   } catch (e) {
     console.error(e)
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchInteractionStatus(id: string) {
+  try {
+    const res = await strategyApi.getInteractionStatus(id)
+    interactionStatus.value = res
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function fetchComments(id: string) {
+  try {
+    const res = await strategyApi.getComments(id)
+    comments.value = res || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function handleLike() {
+  if (!userStore.requireLogin()) return
+  if (!detail.value) return
+  try {
+    const isLiked = await strategyApi.toggleLike(detail.value.id)
+    interactionStatus.value.hasLiked = isLiked
+    detail.value.likeCount += isLiked ? 1 : -1
+    uni.showToast({ title: isLiked ? '已点赞' : '已取消点赞', icon: 'none' })
+  } catch (e) {}
+}
+
+async function handleCollect() {
+  if (!userStore.requireLogin()) return
+  if (!detail.value) return
+  try {
+    const isCollected = await strategyApi.toggleCollect(detail.value.id)
+    interactionStatus.value.hasCollected = isCollected
+    uni.showToast({ title: isCollected ? '已收藏' : '已取消收藏', icon: 'none' })
+  } catch (e) {}
+}
+
+function handleCommentReply(replyTarget: CommentVO, rootParentId: number) {
+  if (!userStore.requireLogin()) return
+  
+  replyingTo.value = replyTarget
+  // The API uses `parentId` to build the tree, so parentId should be rootParentId
+  // The API uses `replyToId` to know exactly who is being replied to
+  // We temporarily store rootParentId on replyingTo, or we can use another ref
+  replyRootId.value = rootParentId === 0 ? replyTarget.id : rootParentId
+  
+  isTyping.value = true
+  setTimeout(() => {
+    isInputFocused.value = true
+  }, 100)
+}
+
+const replyRootId = ref<number | null>(null)
+
+function handleCommentClick(replyTarget?: CommentVO) {
+  if (!userStore.requireLogin()) return
+  replyingTo.value = replyTarget || null
+  replyRootId.value = replyTarget ? replyTarget.id : 0
+  isTyping.value = true
+  setTimeout(() => {
+    isInputFocused.value = true
+  }, 100)
+}
+
+function onBlurInput() {
+  // Delay removing typing state so the click on "发送" can fire
+  setTimeout(() => {
+    isTyping.value = false
+    isInputFocused.value = false
+  }, 200)
+}
+
+async function submitComment() {
+  if (!commentContent.value.trim()) {
+    return uni.showToast({ title: '请输入评论内容', icon: 'none' })
+  }
+  try {
+    uni.showLoading({ title: '发送中' })
+    const res = await strategyApi.addComment(detail.value.id, {
+      content: commentContent.value,
+      parentId: replyRootId.value || 0,
+      replyToId: replyingTo.value?.id
+    })
+    
+    // Instead of unshift, we can just re-fetch the comments to get the correct tree structure
+    fetchComments(detail.value.id)
+    
+    detail.value.commentCount++
+    commentContent.value = ''
+    isTyping.value = false
+    replyingTo.value = null
+    replyRootId.value = null
+    uni.hideLoading()
+    uni.showToast({ title: '评论成功', icon: 'none' })
+  } catch (e) {
+    uni.hideLoading()
   }
 }
 </script>
@@ -41,8 +154,9 @@ async function fetchDetail(id: string) {
         
         <view class="author-row">
           <view class="author-info">
-            <view class="avatar-ph">👤</view>
-            <text class="author-name">{{ detail.source === 'internal' ? '旅行达人' : '网络热门' }}</text>
+            <image v-if="detail.authorAvatar" :src="detail.authorAvatar" class="avatar-ph" mode="aspectFill" />
+            <view v-else class="avatar-ph">👤</view>
+            <text class="author-name">{{ detail.authorName || (detail.source === 'internal' ? '旅行达人' : '网络热门') }}</text>
           </view>
           <view class="source-badge" :class="detail.source">{{ detail.source === 'internal' ? '站内推荐' : '外部精选' }}</view>
         </view>
@@ -53,53 +167,66 @@ async function fetchDetail(id: string) {
           <text class="meta-text">浏览: {{ detail.viewCount }}</text>
         </view>
 
-        <!-- AI 摘要 -->
-        <view class="ai-box" v-if="detail.aiSummary">
-          <view class="ai-header">
-            <text class="ai-icon">✨</text>
-            <text class="ai-title">AI 核心摘要</text>
-          </view>
-          <text class="ai-content">{{ detail.aiSummary }}</text>
-        </view>
-
         <!-- 正文 -->
         <view class="article-content">
+          <!-- TODO: 如果是富文本可以考虑用 rich-text，这里保留换行 -->
           <text class="text">{{ detail.content }}</text>
         </view>
 
-        <!-- AI 提取行程 -->
-        <view class="ai-itinerary" v-if="detail.aiItinerary">
-          <view class="ai-header">
-            <text class="ai-icon">🗺️</text>
-            <text class="ai-title">AI 提取行程</text>
+        <!-- 评论列表区 -->
+        <view class="comments-section" id="comments">
+          <view class="section-title">全部评论 ({{ detail.commentCount }})</view>
+          <view v-if="comments.length === 0" class="empty-comment">
+            暂无评论，快来抢沙发吧~
           </view>
-          <view class="itinerary-list">
-             <text class="ai-content" style="white-space: pre-wrap; font-size: 26rpx; color: #475569;">{{ detail.aiItinerary }}</text>
+          <view v-else class="comment-list">
+            <CommentTree 
+              v-for="item in comments" 
+              :key="item.id" 
+              :comment="item" 
+              :is-root="true"
+              @reply="handleCommentReply"
+            />
           </view>
         </view>
       </view>
       
-      <view style="height: 100rpx;"></view>
+      <view style="height: 140rpx;"></view>
     </scroll-view>
 
     <!-- 底部操作栏 -->
     <view class="bottom-action" v-if="!loading && detail">
-      <view class="input-box">
-        <text class="ph">说点什么...</text>
+      <view class="input-box" @click="handleCommentClick()">
+        <input 
+          class="comment-input"
+          v-model="commentContent"
+          :placeholder="replyingTo ? `回复 @${replyingTo.nickname || '神秘旅人'}...` : '说点什么...'"
+          :focus="isInputFocused"
+          @focus="isTyping = true"
+          @blur="onBlurInput"
+          cursor-spacing="20"
+        />
       </view>
-      <view class="action-icons">
-        <view class="icon-item">
-          <text>❤️</text>
-          <text class="num">{{ detail.likeCount }}</text>
+      
+      <!-- 未输入内容且未激活键盘时显示图标 -->
+      <view class="action-icons" v-if="!isTyping && !commentContent">
+        <view class="icon-item" @click="handleLike">
+          <text :class="interactionStatus.hasLiked ? 'active-icon' : ''">{{ interactionStatus.hasLiked ? '❤️' : '🤍' }}</text>
+          <text class="num" :class="{ active: interactionStatus.hasLiked }">{{ detail.likeCount || 0 }}</text>
         </view>
-        <view class="icon-item">
+        <view class="icon-item" @click="handleCommentClick()">
           <text>💬</text>
-          <text class="num">{{ detail.commentCount }}</text>
+          <text class="num">{{ detail.commentCount || 0 }}</text>
         </view>
-        <view class="icon-item">
-          <text>⭐</text>
-          <text class="num">收藏</text>
+        <view class="icon-item" @click="handleCollect">
+          <text :class="interactionStatus.hasCollected ? 'active-icon' : ''">{{ interactionStatus.hasCollected ? '⭐' : '☆' }}</text>
+          <text class="num" :class="{ active: interactionStatus.hasCollected }">{{ interactionStatus.hasCollected ? '已收藏' : '收藏' }}</text>
         </view>
+      </view>
+
+      <!-- 输入中时显示发送按钮 -->
+      <view class="send-action" v-else>
+        <button class="send-btn" :class="{ active: commentContent.trim() }" @click.stop="submitComment">发送</button>
       </view>
     </view>
   </view>
@@ -118,18 +245,18 @@ async function fetchDetail(id: string) {
 }
 .cover-img {
   width: 100%;
-  height: 500rpx;
+  height: 480rpx;
   background: #f1f5f9;
 }
 .content-body {
   padding: 32rpx;
 }
 .title {
-  font-size: 40rpx;
+  font-size: 38rpx;
   font-weight: 800;
-  color: var(--text-primary);
-  line-height: 1.4;
-  margin-bottom: 24rpx;
+  color: #1e293b;
+  line-height: 1.5;
+  margin-bottom: 32rpx;
   display: block;
 }
 .author-row {
@@ -145,12 +272,12 @@ async function fetchDetail(id: string) {
 }
 .avatar-ph {
   width: 64rpx; height: 64rpx;
-  background: #f1f5f9; border-radius: 50%;
+  background: #e2e8f0; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 32rpx;
 }
 .author-name {
-  font-size: 28rpx; font-weight: bold; color: var(--text-primary);
+  font-size: 28rpx; font-weight: 600; color: #334155;
 }
 .source-badge {
   font-size: 22rpx;
@@ -164,48 +291,47 @@ async function fetchDetail(id: string) {
   display: flex;
   gap: 24rpx;
   margin-bottom: 40rpx;
-  padding: 20rpx;
+  padding: 24rpx;
   background: #f8fafc;
   border-radius: 16rpx;
 }
 .meta-text {
   font-size: 26rpx;
-  color: var(--text-secondary);
+  color: #64748b;
 }
 .article-content {
   font-size: 32rpx;
-  color: var(--text-primary);
+  color: #334155;
   line-height: 1.8;
   white-space: pre-wrap;
-  margin-bottom: 40rpx;
+  margin-bottom: 60rpx;
 }
 
-.ai-box, .ai-itinerary {
-  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
-  border-radius: 20rpx;
-  padding: 24rpx;
-  margin-bottom: 32rpx;
-  border: 1rpx solid #bae6fd;
+.comments-section {
+  border-top: 1rpx solid #f1f5f9;
+  padding-top: 40rpx;
 }
-.ai-header {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
+.section-title {
+  font-size: 32rpx; font-weight: 700; color: #1e293b; margin-bottom: 32rpx;
 }
-.ai-icon { font-size: 32rpx; }
-.ai-title { font-size: 28rpx; font-weight: 700; color: #0369a1; }
-.ai-content { font-size: 26rpx; color: #0f172a; line-height: 1.6; }
+.empty-comment {
+  padding: 60rpx 0; text-align: center; color: #94a3b8; font-size: 26rpx;
+}
+.comment-list {
+  display: flex; flex-direction: column;
+}
 
 .bottom-action {
   position: fixed;
   bottom: 0; left: 0; width: 100%;
   background: #fff;
-  border-top: 1rpx solid #f1f5f9;
+  border-top: 1rpx solid #f8fafc;
   padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   gap: 32rpx;
+  box-shadow: 0 -4rpx 20rpx rgba(0,0,0,0.03);
+  z-index: 100;
 }
 .input-box {
   flex: 1;
@@ -215,18 +341,34 @@ async function fetchDetail(id: string) {
   display: flex; align-items: center;
   padding: 0 32rpx;
 }
-.ph { font-size: 26rpx; color: var(--text-tertiary); }
+.comment-input {
+  width: 100%;
+  font-size: 26rpx;
+  color: #1e293b;
+}
 
 .action-icons {
-  display: flex; gap: 32rpx;
+  display: flex; gap: 40rpx;
 }
 .icon-item {
   display: flex; flex-direction: column; align-items: center; gap: 4rpx;
-  font-size: 40rpx;
+  font-size: 40rpx; color: #94a3b8;
 }
-.num { font-size: 20rpx; color: var(--text-secondary); }
+.active-icon { transform: scale(1.1); transition: all 0.2s; }
+.num { font-size: 20rpx; color: #64748b; }
+.num.active { color: #ef4444; }
+
+.send-action {
+  display: flex; align-items: center;
+}
+.send-btn {
+  margin: 0; padding: 0 32rpx; height: 60rpx; line-height: 60rpx;
+  font-size: 26rpx; border-radius: 30rpx; background: #e2e8f0; color: #94a3b8;
+  &::after { border: none; }
+  &.active { background: var(--primary); color: #fff; }
+}
 
 .loading-state {
-  text-align: center; padding: 100rpx; color: var(--text-tertiary);
+  text-align: center; padding: 100rpx; color: #94a3b8;
 }
 </style>

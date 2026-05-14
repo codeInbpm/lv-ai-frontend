@@ -119,6 +119,20 @@
         "navigationBarTitleText": "旅途管家",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/note/index",
+      "style": {
+        "navigationBarTitleText": "我的笔记",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/note/publish",
+      "style": {
+        "navigationBarTitleText": "发布笔记",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

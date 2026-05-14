@@ -7,7 +7,7 @@ import { useNavBar } from '../../composables/useNavBar'
 
 const userStore = useUserStore()
 const { totalHeight: navTotalHeight } = useNavBar()
-const stats = ref({ totalPlans: 0, completedPlans: 0, ongoingPlans: 0 })
+const stats = ref({ totalPlans: 0, completedPlans: 0, ongoingPlans: 0, notesCount: 0 })
 const inviteCode = ref('')
 
 onMounted(async () => {
@@ -111,9 +111,14 @@ async function handleLogout() {
         </view>
 
         <view class="stats-row">
-          <view class="stat-item">
+          <view class="stat-item" @click="uni.navigateTo({ url: '/pages/plan/list/index' })">
             <text class="stat-num">{{ stats.totalPlans }}</text>
             <text class="stat-label">全部行程</text>
+          </view>
+          <view class="stat-divider" />
+          <view class="stat-item" @click="uni.navigateTo({ url: '/pages/note/index' })">
+            <text class="stat-num">{{ stats.notesCount || 0 }}</text>
+            <text class="stat-label">我的笔记</text>
           </view>
           <view class="stat-divider" />
           <view class="stat-item">
@@ -137,9 +142,9 @@ async function handleLogout() {
           <text class="menu-label">我的行程</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item" @click="uni.showToast({ title: '功能开发中', icon: 'none' })">
-          <text class="menu-icon">❤️</text>
-          <text class="menu-label">我的收藏</text>
+        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/note/index' })">
+          <text class="menu-icon">📝</text>
+          <text class="menu-label">我的笔记</text>
           <text class="menu-arrow">›</text>
         </view>
         <view class="menu-item" @click="uni.navigateTo({ url: '/pages/footprint/index' })">

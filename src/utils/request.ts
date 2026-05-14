@@ -35,8 +35,8 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
     uni.showLoading({ title: '加载中...', mask: true })
   }
 
-  // GET 请求过滤 undefined/null 参数
-  const cleanedData = method === 'GET' ? cleanParams(data) : data
+  // 过滤 undefined/null 参数，防止 uni.request 将 undefined 序列化为 "undefined"
+  const cleanedData = cleanParams(data)
 
   return new Promise((resolve, reject) => {
     uni.request({

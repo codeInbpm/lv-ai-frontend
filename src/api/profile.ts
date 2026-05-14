@@ -8,5 +8,5 @@ export const profileApi = {
   /** 我的足迹 */
   getFootprints: () => http.get<any[]>('/profile/footprints'),
   /** 旅行统计 */
-  getStats: () => http.get<{ totalPlans: number; completedPlans: number; ongoingPlans: number }>('/profile/stats')
+  getStats: () => http.get<{ totalPlans: number; completedPlans: number; ongoingPlans: number; notesCount: number }>('/profile/stats')
 }
