@@ -2,6 +2,7 @@
 import { reactive } from 'vue'
 import NavBar from '../../components/common/NavBar.vue'
 import { http } from '../../utils/request'
+import { commonApi } from '../../api/common'
 
 const form = reactive({
   title: '',
@@ -14,9 +15,16 @@ const form = reactive({
 function chooseCover() {
   uni.chooseImage({
     count: 1,
-    success: (res) => {
-      form.coverUrl = res.tempFilePaths[0]
-      // 这里应当有上传到 MinIO 的逻辑，此处做本地预览展示
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0]
+      uni.showLoading({ title: '上传中...' })
+      try {
+        const url = await commonApi.upload(tempFilePath)
+        form.coverUrl = url
+        uni.hideLoading()
+      } catch (e) {
+        uni.hideLoading()
+      }
     }
   })
 }

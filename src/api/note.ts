@@ -10,6 +10,7 @@ export interface UserNote {
   likeCount: number
   commentCount: number
   status: number
+  images?: string
   createTime: string
 }
 
