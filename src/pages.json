@@ -140,6 +140,20 @@
         "navigationBarTitleText": "我的社区",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/note/topic-select",
+      "style": {
+        "navigationBarTitleText": "选择话题",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/note/detail",
+      "style": {
+        "navigationBarTitleText": "笔记详情",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

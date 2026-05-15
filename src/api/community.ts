@@ -15,10 +15,10 @@ export const communityApi = {
   },
   
   /**
-   * 获取用户收藏的攻略
+   * 获取用户收藏列表
    */
-  getCollectedStrategies() {
-    return http.get<any[]>('/community/collections/strategies')
+  getCollections(type: number) {
+    return http.get<any[]>(`/community/collections/${type}`)
   },
   
   /**

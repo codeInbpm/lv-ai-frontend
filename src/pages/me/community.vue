@@ -34,7 +34,7 @@ async function fetchTabData(tabIndex: number) {
   loading.value = true
   try {
     if (tabIndex === 0) {
-      collectedStrategies.value = await communityApi.getCollectedStrategies() || []
+      collectedStrategies.value = await communityApi.getCollections(3) || []
     } else if (tabIndex === 1) {
       browsingHistory.value = await communityApi.getHistory() || []
     } else if (tabIndex === 2) {
@@ -68,8 +68,86 @@ async function fetchCreationData(tabIndex: number) {
   }
 }
 
+function goNoteDetail(id: number) {
+  uni.navigateTo({ url: `/pages/note/detail?id=${id}` })
+}
+
+function goDraftDetail(item: any) {
+  uni.navigateTo({ url: `/pages/note/publish?draftId=${item.id}` })
+}
+
 function goPublish() {
   uni.navigateTo({ url: '/pages/note/publish' })
+}
+
+function deleteNote(item: any) {
+  uni.showModal({
+    title: '提示',
+    content: '确定要删除这篇笔记吗？删除后不可恢复',
+    confirmColor: '#ef4444',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          const delRes = await uni.request({
+            url: `http://localhost:8080/api/note/${item.id}`,
+            method: 'DELETE',
+            header: { Authorization: userStore.token }
+          })
+          const data = delRes.data as any
+          if (data.code === 200) {
+            uni.showToast({ title: '删除成功' })
+            fetchCreationData(activeCreationTab.value)
+          } else {
+            uni.showToast({ title: data.message || '删除失败', icon: 'none' })
+          }
+        } catch (e) {
+          uni.showToast({ title: '网络错误', icon: 'none' })
+        }
+      }
+    }
+  })
+}
+
+function deleteDraft(item: any) {
+  uni.showModal({
+    title: '提示',
+    content: '确定要删除这篇草稿吗？',
+    confirmColor: '#ef4444',
+    success: async (res) => {
+      if (res.confirm) {
+        try {
+          const delRes = await uni.request({
+            url: `http://localhost:8080/api/community/drafts/${item.id}`,
+            method: 'DELETE',
+            header: { Authorization: userStore.token }
+          })
+          const data = delRes.data as any
+          if (data.code === 200) {
+            uni.showToast({ title: '删除成功' })
+            drafts.value = await communityApi.getDrafts() || []
+          } else {
+            uni.showToast({ title: data.message || '删除失败', icon: 'none' })
+          }
+        } catch (e) {
+          uni.showToast({ title: '网络错误', icon: 'none' })
+        }
+      }
+    }
+  })
+}
+
+async function removeCollection(item: any) {
+  // Use existing toggleCollect API to remove
+  try {
+    const url = item.targetType === 3 ? `/strategy/interaction/${item.targetId}/collect` : `/note/interaction/${item.targetId}/collect`
+    const res = await uni.request({
+      url: `http://localhost:8080/api${url}`,
+      method: 'POST',
+      header: { Authorization: userStore.token }
+    })
+    uni.showToast({ title: '已移除' })
+    fetchTabData(0)
+  } catch (e) {}
 }
 </script>
 
@@ -119,15 +197,25 @@ function goPublish() {
         <!-- 我的收藏 -->
         <view class="tab-content" v-if="activeTab === 0">
           <view class="strategy-list" v-if="collectedStrategies.length > 0">
-            <view class="strategy-card" v-for="item in collectedStrategies" :key="item.id" @click="uni.navigateTo({ url: '/pages/strategy/detail?id=' + item.id })">
-              <image class="s-cover" :src="item.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
-              <view class="s-info">
-                <text class="s-title">{{ item.title }}</text>
-                <view class="s-meta">
-                  <text class="s-dest">{{ item.destination || '未知目的地' }} · {{ item.days || 1 }}天</text>
-                  <text class="s-likes">❤️ {{ item.likeCount || 0 }}</text>
+            <view class="strategy-card" v-for="item in collectedStrategies" :key="item.id">
+              <template v-if="!item.isDeleted">
+                <view class="s-card-inner" @click="uni.navigateTo({ url: '/pages/strategy/detail?id=' + item.targetId })">
+                  <image class="s-cover" :src="item.data.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
+                  <view class="s-info">
+                    <text class="s-title">{{ item.data.title }}</text>
+                    <view class="s-meta">
+                      <text class="s-dest">{{ item.data.destination || '未知目的地' }} · {{ item.data.days || 1 }}天</text>
+                      <text class="s-likes">❤️ {{ item.data.likeCount || 0 }}</text>
+                    </view>
+                  </view>
                 </view>
-              </view>
+              </template>
+              <template v-else>
+                <view class="deleted-placeholder">
+                  <text class="del-msg">内容已被原作者删除</text>
+                  <text class="del-btn" @click="removeCollection(item)">移除收藏</text>
+                </view>
+              </template>
             </view>
           </view>
           <view class="empty-state" v-else>
@@ -165,23 +253,30 @@ function goPublish() {
           <view v-if="activeCreationTab === 0">
             <view class="note-grid" v-if="myNotes.length > 0">
               <view class="note-card" v-for="item in myNotes" :key="item.id">
-                <image class="n-cover" :src="item.coverUrl" mode="aspectFill" />
-                <view class="n-info">
-                  <text class="n-title">{{ item.title }}</text>
-                  <view class="n-bottom">
-                    <text class="n-status">{{ item.status === 1 ? '已发布' : '审核中' }}</text>
-                    <text class="n-likes">❤️ {{ item.likeCount }}</text>
+                <view class="n-card-inner" @click="goNoteDetail(item.id)">
+                  <image class="n-cover" :src="item.coverUrl" mode="aspectFill" />
+                  <view class="n-info">
+                    <text class="n-title">{{ item.title }}</text>
+                    <view class="n-bottom">
+                      <text class="n-status">{{ item.status === 1 ? '已发布' : '审核中' }}</text>
+                      <text class="n-likes">❤️ {{ item.likeCount }}</text>
+                    </view>
                   </view>
+                </view>
+                <view class="delete-icon" @click.stop="deleteNote(item)">
+                  <text class="del-text">删除</text>
                 </view>
               </view>
             </view>
+            <view class="publish-btn-wrap">
+              <button class="publish-btn" @click="goPublish">发布笔记</button>
+            </view>
             <!-- 笔记空状态 (保留骆驼插图) -->
-            <view class="empty-state camel-state" v-else>
+            <view class="empty-state camel-state" v-if="myNotes.length === 0">
               <view class="empty-illustration">
                 <text class="emoji-img">🐪</text>
               </view>
               <text class="empty-text">还没有笔记，快来发布笔记参与话题讨论吧~</text>
-              <button class="publish-btn" @click="goPublish">发布笔记</button>
             </view>
           </view>
           <view class="empty-state" v-else>
@@ -194,9 +289,16 @@ function goPublish() {
         <view class="tab-content" v-if="activeTab === 3">
           <view class="draft-list" v-if="drafts.length > 0">
             <view class="draft-card" v-for="item in drafts" :key="item.id">
-              <text class="d-type">{{ item.draftType === 1 ? '笔记' : '攻略' }}</text>
-              <text class="d-title">{{ item.title || '无标题草稿' }}</text>
-              <text class="d-time">更新于 {{ item.updateTime }}</text>
+              <view class="d-card-inner" @click="goDraftDetail(item)">
+                <view class="d-header">
+                  <text class="d-type">{{ item.draftType === 1 ? '笔记' : '攻略' }}</text>
+                </view>
+                <text class="d-title">{{ item.title || '无标题草稿' }}</text>
+                <text class="d-time">更新于 {{ item.updateTime }}</text>
+              </view>
+              <view class="delete-btn-inline" @click.stop="deleteDraft(item)">
+                <text class="del-icon">🗑️</text>
+              </view>
             </view>
           </view>
           <view class="empty-state" v-else>
@@ -531,6 +633,58 @@ function goPublish() {
   color: #ef4444;
 }
 
+.note-card {
+  position: relative;
+}
+.delete-icon {
+  position: absolute;
+  top: 10rpx;
+  right: 10rpx;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+  z-index: 10;
+}
+
+.draft-card {
+  position: relative;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  .d-card-inner { flex: 1; }
+  .delete-btn-inline {
+    padding: 20rpx;
+    font-size: 32rpx;
+    opacity: 0.6;
+  }
+}
+
+.n-likes {
+  font-size: 22rpx;
+  color: #ef4444;
+}
+
+.publish-btn-wrap {
+  padding: 40rpx 0;
+  display: flex;
+  justify-content: center;
+  .publish-btn {
+    background: #0ea5e9;
+    color: #fff;
+    width: 320rpx;
+    height: 88rpx;
+    line-height: 88rpx;
+    border-radius: 44rpx;
+    font-size: 30rpx;
+    font-weight: 600;
+    box-shadow: 0 8rpx 20rpx rgba(14, 165, 233, 0.2);
+    &::after { border: none; }
+  }
+}
+
 .camel-state {
   padding-top: 40rpx;
   .empty-illustration {
@@ -562,5 +716,21 @@ function goPublish() {
     box-shadow: 0 8rpx 20rpx rgba(14, 165, 233, 0.3);
     &::after { border: none; }
   }
+}
+.deleted-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx;
+  background: #f1f5f9;
+  border-radius: 12rpx;
+  .del-msg { font-size: 26rpx; color: #94a3b8; }
+  .del-btn { font-size: 24rpx; color: #0ea5e9; font-weight: 600; }
+}
+
+.s-card-inner {
+  display: flex;
+  flex: 1;
 }
 </style>
