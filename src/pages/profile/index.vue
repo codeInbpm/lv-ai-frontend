@@ -116,9 +116,9 @@ async function handleLogout() {
             <text class="stat-label">全部行程</text>
           </view>
           <view class="stat-divider" />
-          <view class="stat-item" @click="uni.navigateTo({ url: '/pages/note/index' })">
+          <view class="stat-item" @click="uni.navigateTo({ url: '/pages/me/community' })">
             <text class="stat-num">{{ stats.notesCount || 0 }}</text>
-            <text class="stat-label">我的笔记</text>
+            <text class="stat-label">我的社区</text>
           </view>
           <view class="stat-divider" />
           <view class="stat-item">
@@ -142,9 +142,9 @@ async function handleLogout() {
           <text class="menu-label">我的行程</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/note/index' })">
-          <text class="menu-icon">📝</text>
-          <text class="menu-label">我的笔记</text>
+        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/me/community' })">
+          <text class="menu-icon">🏘️</text>
+          <text class="menu-label">我的社区</text>
           <text class="menu-arrow">›</text>
         </view>
         <view class="menu-item" @click="uni.navigateTo({ url: '/pages/footprint/index' })">
