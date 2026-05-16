@@ -1,8 +1,27 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { marked } from 'marked'
 import NavBar from '../../components/common/NavBar.vue'
 import { http } from '../../utils/request'
+
+marked.setOptions({ breaks: true, gfm: true })
+
+function mdToHtml(text: string): string {
+  if (!text) return ''
+  try {
+    return marked.parse(text) as string
+  } catch {
+    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+}
+
+function copyContent(content: string) {
+  uni.setClipboardData({
+    data: content,
+    success: () => uni.showToast({ title: '已复制', icon: 'success', duration: 1500 })
+  })
+}
 
 const planId = ref<string>('')
 const sessionId = ref<string>('')
@@ -149,7 +168,11 @@ function scrollToBottom() {
         <image v-if="msg.role === 'assistant'" class="avatar" src="/static/ai-avatar.png" />
         <view class="bubble-wrap">
           <view class="bubble" :class="{ 'loading-bubble': msg.isLoading }">
-            <text class="msg-text">{{ msg.content }}</text>
+            <rich-text v-if="msg.role === 'assistant' && !msg.isLoading" class="msg-rich" :nodes="mdToHtml(msg.content)"></rich-text>
+            <text v-else class="msg-text">{{ msg.content }}</text>
+            <view v-if="msg.role === 'assistant' && !msg.isLoading" class="copy-btn" @click="copyContent(msg.content)">
+              <text class="copy-icon">▦</text>
+            </view>
           </view>
         </view>
         <image v-if="msg.role === 'user'" class="avatar" src="/static/user-avatar.png" />
@@ -237,6 +260,26 @@ function scrollToBottom() {
 .loading-bubble {
   color: #94a3b8 !important;
   font-style: italic;
+}
+
+.msg-rich {
+  font-size: 28rpx;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.copy-btn {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.copy-icon {
+  font-size: 28rpx;
+  color: #94a3b8;
+  padding: 4rpx 12rpx;
 }
 
 /* 底部输入框 */
