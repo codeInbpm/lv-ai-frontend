@@ -188,7 +188,7 @@ function uploadImages() {
       uni.showLoading({ title: '上传中...' })
       for (const path of res.tempFilePaths) {
         try {
-          const url = await commonApi.upload(path)
+          const url = await commonApi.upload(path, 'notes')
           images.value.push(url)
         } catch (e) {}
       }

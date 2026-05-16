@@ -6,12 +6,17 @@ export const commonApi = {
   /**
    * 上传文件
    * @param filePath 本地文件路径
+   * @param folder 文件夹名称
    */
-  upload(filePath: string): Promise<string> {
+  upload(filePath: string, folder?: string): Promise<string> {
     const userStore = useUserStore()
     return new Promise((resolve, reject) => {
+      let url = BASE_URL + '/file/upload'
+      if (folder) {
+        url += `?folder=${folder}`
+      }
       uni.uploadFile({
-        url: BASE_URL + '/file/upload',
+        url: url,
         filePath: filePath,
         name: 'file',
         header: {

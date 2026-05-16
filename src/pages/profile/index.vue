@@ -5,6 +5,8 @@ import { profileApi } from '../../api/profile'
 import NavBar from '../../components/common/NavBar.vue'
 import { useNavBar } from '../../composables/useNavBar'
 
+import { commonApi } from '../../api/common'
+
 const userStore = useUserStore()
 const { totalHeight: navTotalHeight } = useNavBar()
 const stats = ref({ totalPlans: 0, completedPlans: 0, ongoingPlans: 0, notesCount: 0 })
@@ -36,8 +38,17 @@ function chooseAvatar() {
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
-    success(res) {
-      userStore.updateProfile({ avatar: res.tempFilePaths[0] })
+    success: async (res) => {
+      try {
+        uni.showLoading({ title: '上传中...' })
+        // 上传到 avatar 文件夹
+        const url = await commonApi.upload(res.tempFilePaths[0], 'avatar')
+        await userStore.updateProfile({ avatar: url })
+        uni.hideLoading()
+        uni.showToast({ title: '修改成功', icon: 'success' })
+      } catch (e) {
+        uni.hideLoading()
+      }
     }
   })
 }
