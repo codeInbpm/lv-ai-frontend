@@ -44,9 +44,23 @@
       }
     },
     {
-      "path": "pages/discover/index",
+      "path": "pages/world/index",
       "style": {
-        "navigationBarTitleText": "发现",
+        "navigationBarTitleText": "看世界",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/world/destination",
+      "style": {
+        "navigationBarTitleText": "城市详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/world/inspiration-detail",
+      "style": {
+        "navigationBarTitleText": "出行灵感",
         "navigationStyle": "custom"
       }
     },
@@ -169,8 +183,8 @@
         "selectedIconPath": "static/icons/home-active.png"
       },
       {
-        "pagePath": "pages/discover/index",
-        "text": "发现",
+        "pagePath": "pages/world/index",
+        "text": "看世界",
         "iconPath": "static/icons/discover.png",
         "selectedIconPath": "static/icons/discover-active.png"
       },
