@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { noteApi } from '../../api/note'
+import { strategyApi } from '../../api/strategy'
 import { useUserStore } from '../../stores/user'
 import NavBar from '../../components/common/NavBar.vue'
 import CommentTree from '../../components/comment/CommentTree.vue'
@@ -83,23 +84,37 @@ function handleCommentClick(replyTarget?: CommentVO) {
 }
 
 function handleCommentReply(target: CommentVO, rootId: number) {
-  handleCommentClick(target)
+  replyingTo.value = target
   replyRootId.value = rootId || target.id
+  isTyping.value = true
+  setTimeout(() => {
+    isInputFocused.value = true
+  }, 100)
 }
 
 async function submitComment() {
   if (!commentContent.value.trim()) return
   try {
     uni.showLoading({ title: '发送中' })
+    
+    // 物理对接后端发表评论，带上 replyToId 与 parentId
     await noteApi.addComment(note.value.id, {
       content: commentContent.value,
-      parentId: replyRootId.value || 0
+      parentId: replyRootId.value || 0,
+      replyToId: replyingTo.value?.id
     })
+    
+    // 刷新最新后台评论树
     loadComments(note.value.id)
+    
     note.value.commentCount = (note.value.commentCount || 0) + 1
     commentContent.value = ''
     isTyping.value = false
+    replyingTo.value = null
+    replyRootId.value = null
+    
     uni.hideLoading()
+    uni.showToast({ title: '评论成功', icon: 'success' })
   } catch (e) {
     uni.hideLoading()
   }
@@ -135,6 +150,34 @@ async function handleCommentLike(comment: CommentVO) {
     comment.hasLiked = isLiked
     comment.likeCount = (comment.likeCount || 0) + (isLiked ? 1 : -1)
   } catch (e) {}
+}
+
+// 支持删除自己发表的评论，真实交互打通！
+function handleCommentDelete(comment: CommentVO) {
+  if (!userStore.requireLogin()) return
+  if (comment.userId !== userStore.userInfo?.id) {
+    uni.showToast({ title: '只能删除自己的评论', icon: 'none' })
+    return
+  }
+  
+  uni.showActionSheet({
+    itemList: ['删除我的评论'],
+    itemColor: '#ef4444',
+    success: async (res) => {
+      if (res.tapIndex === 0) {
+        try {
+          uni.showLoading({ title: '删除中' })
+          await strategyApi.deleteComment(comment.id)
+          uni.hideLoading()
+          uni.showToast({ title: '已删除', icon: 'success' })
+          loadComments(note.value.id)
+          note.value.commentCount = Math.max(0, (note.value.commentCount || 0) - 1)
+        } catch (e) {
+          uni.hideLoading()
+        }
+      }
+    }
+  })
 }
 
 function onBlurInput() {
@@ -208,6 +251,7 @@ onShareTimeline(() => {
               :is-root="true"
               @reply="handleCommentReply"
               @like="handleCommentLike"
+              @delete="handleCommentDelete"
             />
           </view>
           <view class="empty-comment" v-else>
@@ -221,8 +265,9 @@ onShareTimeline(() => {
     
     <!-- 底部操作栏 -->
     <view class="bottom-bar">
+      <!-- 灰色说点什么静态触发框，显示智能回复人占位符 -->
       <view class="input-trigger" @click="handleCommentClick()">
-        <text class="p-text">说点什么...</text>
+        <text class="p-text">{{ replyingTo ? `回复 @${replyingTo.nickname}...` : '说点什么...' }}</text>
       </view>
       
       <view class="actions" v-if="!isTyping && !commentContent">
@@ -231,7 +276,7 @@ onShareTimeline(() => {
           <text class="count">{{ note.likeCount || 0 }}</text>
         </view>
         <view class="action-item" @click="handleCollect">
-          <text class="icon" :class="{ active: interactionStatus.hasCollected }">{{ interactionStatus.hasCollected ? '⭐' : '☆' }}</text>
+          <text class="icon" :class="{ active: interactionStatus.hasCollected }">{{ interactionStatus.hasCollected ? '★' : '☆' }}</text>
           <text class="count">{{ interactionStatus.hasCollected ? '已收藏' : '收藏' }}</text>
         </view>
         <button class="share-btn" open-type="share">
@@ -288,7 +333,7 @@ onShareTimeline(() => {
   margin-bottom: 30rpx;
   .title { font-size: 40rpx; font-weight: bold; color: #1e293b; line-height: 1.4; display: block; margin-bottom: 20rpx; }
   .meta { display: flex; justify-content: space-between; align-items: center; font-size: 24rpx; color: #94a3b8; }
-  .location { display: flex; align-items: center; color: #0ea5e9; .icon { margin-right: 6rpx; } }
+  .location { display: flex; align-items: center; color: #00bac7; font-weight: bold; .icon { margin-right: 6rpx; } }
 }
 
 .body {
@@ -297,7 +342,7 @@ onShareTimeline(() => {
 
 .tags-row {
   display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 40rpx;
-  .tag { background: #f1f5f9; color: #0ea5e9; padding: 10rpx 24rpx; border-radius: 30rpx; font-size: 24rpx; }
+  .tag { background: #f1f5f9; color: #00bac7; padding: 10rpx 24rpx; border-radius: 30rpx; font-size: 24rpx; font-weight: bold; }
 }
 
 /* 评论区 */
@@ -305,7 +350,7 @@ onShareTimeline(() => {
   margin-top: 60rpx;
   border-top: 1rpx solid #f1f5f9;
   padding-top: 40rpx;
-  .s-title { font-size: 30rpx; font-weight: 600; color: #1e293b; margin-bottom: 30rpx; }
+  .s-title { font-size: 30rpx; font-weight: 700; color: #1e293b; margin-bottom: 30rpx; }
   .empty-comment { padding: 60rpx 0; text-align: center; font-size: 26rpx; color: #94a3b8; }
 }
 
@@ -324,7 +369,7 @@ onShareTimeline(() => {
 .input-trigger {
   flex: 1; height: 72rpx; background: #f1f5f9; border-radius: 36rpx;
   display: flex; align-items: center; padding: 0 30rpx;
-  .p-text { font-size: 26rpx; color: #94a3b8; }
+  .p-text { font-size: 26rpx; color: #94a3b8; font-weight: 600; }
 }
 
 .actions {
@@ -333,16 +378,16 @@ onShareTimeline(() => {
     display: flex; flex-direction: column; align-items: center; gap: 4rpx;
     background: none; padding: 0; margin: 0; line-height: 1.2; &::after { border: none; }
     .icon { font-size: 36rpx; color: #94a3b8; &.active { color: #ef4444; } }
-    .count { font-size: 20rpx; color: #64748b; }
+    .count { font-size: 20rpx; color: #64748b; font-weight: 700; }
   }
 }
 
 .typing-bar {
   flex: 1; display: flex; align-items: center; gap: 20rpx;
-  .t-input { flex: 1; height: 72rpx; background: #f1f5f9; border-radius: 36rpx; padding: 0 30rpx; font-size: 28rpx; }
+  .t-input { flex: 1; height: 72rpx; background: #f1f5f9; border-radius: 36rpx; padding: 0 30rpx; font-size: 28rpx; font-weight: 600; }
   .send-btn {
-    width: 120rpx; height: 64rpx; line-height: 64rpx; background: #0ea5e9; color: #fff;
-    font-size: 26rpx; border-radius: 32rpx; margin: 0; &::after { border: none; }
+    width: 120rpx; height: 64rpx; line-height: 64rpx; background: #00bac7; color: #fff;
+    font-size: 26rpx; border-radius: 32rpx; margin: 0; font-weight: bold; &::after { border: none; }
   }
 }
 </style>
