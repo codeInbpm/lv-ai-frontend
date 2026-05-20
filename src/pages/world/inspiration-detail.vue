@@ -30,7 +30,14 @@ function goScenicDetail(item: any) {
     '重庆': 105,
     '丽江': 106,
     '昆明': 107,
-    '三亚': 108
+    '三亚': 108,
+    '呼伦贝尔': 109,
+    '阿勒泰': 110,
+    '香格里拉': 111,
+    '青海湖': 112,
+    '长白山': 113,
+    '九寨沟': 114,
+    '额济纳旗': 115
   }
   const destId = cityMapping[item.title] || 104
   uni.navigateTo({ url: `/pages/world/destination?id=${destId}` })

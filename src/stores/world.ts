@@ -9,6 +9,7 @@ export interface Inspiration {
   subtitle: string
   coverUrl: string
   recommendCount: number
+  destinationId?: number  // 后端关联的目的地ID（执行补丁SQL后有值）
 }
 
 export interface Broadcast {

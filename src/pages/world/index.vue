@@ -34,8 +34,15 @@ function goInspirationDetail() {
   uni.navigateTo({ url: `/pages/world/inspiration-detail?month=${currentMonth.value}` })
 }
 
-// 模拟模糊城市到目的地 ID 的映射，以便灵感城市的跳转能加载对应数据
+// 出行灵感卡片点击：优先使用后端返回的 destinationId，无则 fallback 到 title 字符串映射
 function handleInspirationClick(item: any) {
+  // 优先使用后端字段（数据库执行补丁脚本后生效）
+  if (item.destinationId) {
+    console.log('=== 首页点击灵感卡片（用destinationId）===', item.title, '->', item.destinationId)
+    uni.navigateTo({ url: `/pages/world/destination?id=${item.destinationId}` })
+    return
+  }
+  // Fallback：title 字符串精确匹配（注意 trim 去除空格）
   const cityMapping: Record<string, number> = {
     '张掖': 101,
     '古龙峡': 102,
@@ -48,10 +55,29 @@ function handleInspirationClick(item: any) {
     '成都': 105,
     '武汉': 104,
     '杭州': 106,
-    '广州': 102
+    '广州': 102,
+    '呼伦贝尔': 109,
+    '阿勒泰': 110,
+    '香格里拉': 111,
+    '青海湖': 112,
+    '长白山': 113,
+    '九寨沟': 114,
+    '额济纳旗': 115
   }
-  const destId = cityMapping[item.title] || 104 // 默认跳西安
+  const titleKey = (item.title || '').trim()
+  const destId = cityMapping[titleKey]
+  console.log('=== 首页点击灵感卡片（用title映射）===', '标题:', titleKey, '->ID:', destId)
+  if (!destId) {
+    console.warn('=== 未找到对应目的地，请检查 title 或 destinationId 字段 ===', item)
+    return
+  }
   uni.navigateTo({ url: `/pages/world/destination?id=${destId}` })
+}
+
+// 热门目的地点击跳转（模板中调用此方法，需在此定义）
+function goDestinationDetail(id: number) {
+  console.log('=== 热门目的地跳转 ===', 'id:', id)
+  uni.navigateTo({ url: `/pages/world/destination?id=${id}` })
 }
 
 // 高自适应 Swiper 分页逻辑：每页 1大 (featured) + 4小 (2x2 grid)

@@ -22,6 +22,13 @@ export const communityApi = {
   },
   
   /**
+   * 获取用户全部收藏的混合列表(笔记、攻略、景区)
+   */
+  getAllCollections() {
+    return http.get<any[]>('/community/collections')
+  },
+  
+  /**
    * 获取用户浏览历史
    */
   getHistory() {

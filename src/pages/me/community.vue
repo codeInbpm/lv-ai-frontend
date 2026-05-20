@@ -34,7 +34,7 @@ async function fetchTabData(tabIndex: number) {
   loading.value = true
   try {
     if (tabIndex === 0) {
-      collectedStrategies.value = await communityApi.getCollections(3) || []
+      collectedStrategies.value = await communityApi.getAllCollections() || []
     } else if (tabIndex === 1) {
       browsingHistory.value = await communityApi.getHistory() || []
     } else if (tabIndex === 2) {
@@ -139,7 +139,14 @@ function deleteDraft(item: any) {
 async function removeCollection(item: any) {
   // Use existing toggleCollect API to remove
   try {
-    const url = item.targetType === 3 ? `/strategy/interaction/${item.targetId}/collect` : `/note/interaction/${item.targetId}/collect`
+    let url = ''
+    if (item.targetType === 3) {
+      url = `/strategy/interaction/${item.targetId}/collect`
+    } else if (item.targetType === 4) {
+      url = `/destination/interaction/${item.targetId}/collect`
+    } else {
+      url = `/note/interaction/${item.targetId}/collect`
+    }
     const res = await uni.request({
       url: `http://localhost:8080/api${url}`,
       method: 'POST',
@@ -199,10 +206,42 @@ async function removeCollection(item: any) {
           <view class="strategy-list" v-if="collectedStrategies.length > 0">
             <view class="strategy-card" v-for="item in collectedStrategies" :key="item.id">
               <template v-if="!item.isDeleted">
-                <view class="s-card-inner" @click="uni.navigateTo({ url: '/pages/strategy/detail?id=' + item.targetId })">
+                <!-- 景区/目的地收藏 (type = 4) -->
+                <view v-if="item.targetType === 4" class="s-card-inner" @click="uni.navigateTo({ url: '/pages/world/destination?id=' + item.targetId })">
+                  <image class="s-cover" :src="item.data.imageUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
+                  <view class="s-info">
+                    <view class="s-title-row">
+                      <text class="s-tag scenic">景区</text>
+                      <text class="s-title">{{ item.data.name }}</text>
+                    </view>
+                    <view class="s-meta">
+                      <text class="s-dest">{{ item.data.description || '精彩目的地' }}</text>
+                      <text class="s-likes">❤️ {{ item.data.likeCount || 0 }}</text>
+                    </view>
+                  </view>
+                </view>
+                <!-- 笔记收藏 (type = 1) -->
+                <view v-else-if="item.targetType === 1" class="s-card-inner" @click="uni.navigateTo({ url: '/pages/note/detail?id=' + item.targetId })">
                   <image class="s-cover" :src="item.data.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
                   <view class="s-info">
-                    <text class="s-title">{{ item.data.title }}</text>
+                    <view class="s-title-row">
+                      <text class="s-tag note">笔记</text>
+                      <text class="s-title">{{ item.data.title }}</text>
+                    </view>
+                    <view class="s-meta">
+                      <text class="s-dest">原创旅行笔记</text>
+                      <text class="s-likes">❤️ {{ item.data.likeCount || 0 }}</text>
+                    </view>
+                  </view>
+                </view>
+                <!-- 攻略收藏 (type = 3) -->
+                <view v-else-if="item.targetType === 3" class="s-card-inner" @click="uni.navigateTo({ url: '/pages/strategy/detail?id=' + item.targetId })">
+                  <image class="s-cover" :src="item.data.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
+                  <view class="s-info">
+                    <view class="s-title-row">
+                      <text class="s-tag strategy">攻略</text>
+                      <text class="s-title">{{ item.data.title }}</text>
+                    </view>
                     <view class="s-meta">
                       <text class="s-dest">{{ item.data.destination || '未知目的地' }} · {{ item.data.days || 1 }}天</text>
                       <text class="s-likes">❤️ {{ item.data.likeCount || 0 }}</text>
@@ -732,5 +771,38 @@ async function removeCollection(item: any) {
 .s-card-inner {
   display: flex;
   flex: 1;
+}
+.s-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+.s-tag {
+  font-size: 18rpx;
+  font-weight: 700;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  line-height: 1.2;
+  flex-shrink: 0;
+  &.scenic {
+    background: #e6f7f4;
+    color: #00bac7;
+  }
+  &.strategy {
+    background: #e0f2fe;
+    color: #0ea5e9;
+  }
+  &.note {
+    background: #fef3c7;
+    color: #d97706;
+  }
+}
+.s-dest {
+  flex: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  margin-right: 20rpx;
 }
 </style>

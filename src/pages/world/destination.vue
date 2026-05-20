@@ -4,6 +4,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { useNavBar } from '../../composables/useNavBar'
 import { useWorldStore } from '../../stores/world'
 import { strategyApi, type CommentVO } from '../../api/strategy'
+import { destinationApi } from '../../api/destination'
 import { noteApi } from '../../api/note'
 import { useUserStore } from '../../stores/user'
 import CommentTree from '../../components/comment/CommentTree.vue'
@@ -31,15 +32,18 @@ const commentCount = ref(8)
 const realNotesList = ref<any[]>([])
 
 onLoad((options: any) => {
+  console.log('=== 目的地详情页 onLoad ===', '传入选项:', options)
   if (options.id) {
     destinationId.value = Number(options.id)
   }
 })
 
 onMounted(async () => {
+  console.log('=== 目的地详情页 onMounted ===', '当前加载的目标ID:', destinationId.value)
   if (destinationId.value) {
     // 1. 100% 动态获取数据库中该景点的详情（包含 Spots 与 Foods）
     await worldStore.fetchDestinationDetail(destinationId.value)
+    console.log('=== 目的地详情页 获取数据完成 ===', '接口返回数据:', JSON.stringify(worldStore.currentDestination))
     
     // 2. 物理从后台 /note/list 拉取最新真实笔记，并过滤当前城市（如“桂林”）相关的全部笔记并排序
     await fetchRealNotes()
@@ -62,9 +66,31 @@ const safeStrategyId = computed(() => {
     105: 5,
     106: 6,
     107: 5,
-    108: 6
+    108: 6,
+    109: 6, // 呼伦贝尔 ➡️ 6
+    110: 5, // 阿勒泰 ➡️ 5
+    111: 6, // 香格里拉 ➡️ 6
+    112: 6, // 青海湖 ➡️ 6
+    113: 5, // 长白山 ➡️ 5
+    114: 6, // 九寨沟 ➡️ 6
+    115: 5  // 额济纳旗 ➡️ 5
   }
   return mapping[destinationId.value] || 6
+})
+
+// 根据不同目的地 ID 动态推导其所属推荐月份标签，确保高保真的数据一致性
+const recommendedMonthText = computed(() => {
+  const id = destinationId.value
+  if (id >= 101 && id <= 108) {
+    return '5月必去'
+  } else if (id >= 109 && id <= 111) {
+    return '6月必去'
+  } else if (id >= 112 && id <= 113) {
+    return '7月必去'
+  } else if (id >= 114 && id <= 115) {
+    return '10月必去'
+  }
+  return '季节首选'
 })
 
 // 物理从后台 /note/list 动态拉取与当前城市（如“桂林”）标题、地址、话题、内容相关的笔记，并加入默认倒序排列！
@@ -248,7 +274,7 @@ function goNoteDetail(note: any) {
 async function loadInteractionAndComments() {
   try {
     const sId = safeStrategyId.value
-    interactionStatus.value = await strategyApi.getInteractionStatus(sId)
+    interactionStatus.value = await destinationApi.getInteractionStatus(destinationId.value)
     fetchComments()
   } catch (e) {
     console.error(e)
@@ -282,8 +308,7 @@ async function handleLike() {
 async function handleCollect() {
   if (!userStore.requireLogin()) return
   try {
-    const sId = safeStrategyId.value
-    const isCol = await strategyApi.toggleCollect(sId)
+    const isCol = await destinationApi.toggleCollect(destinationId.value)
     interactionStatus.value.hasCollected = isCol
     uni.showToast({ title: isCol ? '已收藏' : '已取消收藏', icon: 'none' })
   } catch (e) {
@@ -431,7 +456,7 @@ function handleCommentDelete(comment: CommentVO) {
           <view class="tag-row" v-if="primarySpot">
             <text class="type-tag" v-for="tag in primarySpot.tags.split(',')" :key="tag">{{ tag }}</text>
             <text class="type-tag warm">人气推荐</text>
-            <text class="type-tag blue">5月必去</text>
+            <text class="type-tag blue">{{ recommendedMonthText }}</text>
           </view>
         </view>
 
