@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import NavBar from '../../components/common/NavBar.vue'
 import { useUserStore } from '../../stores/user'
 import { communityApi, type CommunityStats } from '../../api/community'
+import { historyApi } from '../../api/history'
 
 const userStore = useUserStore()
 const activeTab = ref(0) // 0: 我的收藏, 1: 浏览历史, 2: 创作中心, 3: 草稿箱
@@ -36,8 +37,14 @@ async function fetchTabData(tabIndex: number) {
     if (tabIndex === 0) {
       collectedStrategies.value = await communityApi.getAllCollections() || []
     } else if (tabIndex === 1) {
-      browsingHistory.value = await communityApi.getHistory() || []
-    } else if (tabIndex === 2) {
+      if (userStore.userInfo?.id) {
+        try {
+          const data = await historyApi.getList(userStore.userInfo.id, 1, 5)
+          browsingHistory.value = data?.records || []
+        } catch (e) {
+          browsingHistory.value = []
+        }
+      }
       // 创作中心 - 默认加载笔记
       fetchCreationData(activeCreationTab.value)
     } else if (tabIndex === 3) {
@@ -266,16 +273,25 @@ async function removeCollection(item: any) {
         <!-- 浏览历史 -->
         <view class="tab-content" v-if="activeTab === 1">
           <view class="history-list" v-if="browsingHistory.length > 0">
-            <view class="history-item" v-for="item in browsingHistory" :key="item.id">
-              <view class="h-dot"></view>
-              <view class="h-content">
-                <text class="h-title">浏览了攻略 ID: {{ item.targetId }}</text>
-                <text class="h-time">{{ item.viewTime }}</text>
+            <view class="history-card" v-for="(item, index) in browsingHistory" :key="index" @click="uni.navigateTo({ url: '/pages/me/browsing-history' })">
+              <image class="h-cover" :src="item.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
+              <view class="h-info">
+                <view class="h-title-row">
+                  <text class="h-tag">{{ item.targetType === 3 ? '攻略' : item.targetType === 2 ? '目的地' : item.targetType === 4 ? '笔记' : '景点' }}</text>
+                  <text class="h-title">{{ item.title }}</text>
+                </view>
+                <text class="h-time">浏览于 {{ item.viewTime }}</text>
               </view>
             </view>
+            <view class="view-all-btn" @click="uni.navigateTo({ url: '/pages/me/browsing-history' })">
+              <text>查看全部浏览足迹</text>
+              <text class="arrow">></text>
+            </view>
           </view>
-          <view class="empty-state" v-else>
-            <view class="emoji-box">🕒</view>
+          <view class="empty-state camel-state" v-else>
+            <view class="empty-illustration">
+              <text class="emoji-img">🐪</text>
+            </view>
             <text class="empty-text">还没有留下浏览足迹</text>
           </view>
         </view>
@@ -557,35 +573,69 @@ async function removeCollection(item: any) {
 }
 
 .history-list {
-  padding: 10rpx 0;
-}
-.history-item {
   display: flex;
+  flex-direction: column;
   gap: 20rpx;
-  margin-bottom: 30rpx;
-  position: relative;
 }
-.h-dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  background: #0ea5e9;
-  margin-top: 10rpx;
-  z-index: 2;
+.history-card {
+  display: flex;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  gap: 20rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.02);
+  border: 1rpx solid #f1f5f9;
 }
-.h-content {
+.h-cover {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 12rpx;
+  background: #f1f5f9;
+}
+.h-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
+  justify-content: space-between;
+}
+.h-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+.h-tag {
+  font-size: 18rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  background: #e0f2fe;
+  color: #0ea5e9;
+  flex-shrink: 0;
+  margin-top: 4rpx;
 }
 .h-title {
-  font-size: 28rpx;
+  font-size: 26rpx;
+  font-weight: 600;
   color: #334155;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .h-time {
   font-size: 22rpx;
   color: #94a3b8;
+}
+.view-all-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30rpx 0;
+  font-size: 26rpx;
+  color: #64748b;
+  gap: 8rpx;
+  .arrow {
+    font-family: monospace;
+  }
 }
 
 .draft-list {

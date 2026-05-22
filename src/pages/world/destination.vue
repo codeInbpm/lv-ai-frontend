@@ -6,6 +6,7 @@ import { useWorldStore } from '../../stores/world'
 import { strategyApi, type CommentVO } from '../../api/strategy'
 import { destinationApi } from '../../api/destination'
 import { noteApi } from '../../api/note'
+import { historyApi } from '../../api/history'
 import { useUserStore } from '../../stores/user'
 import CommentTree from '../../components/comment/CommentTree.vue'
 
@@ -50,6 +51,17 @@ onMounted(async () => {
     
     // 3. 完美连通后端接口，拉取本目的地的真实用户交互状态与评论列表
     loadInteractionAndComments()
+    
+    // 4. 记录浏览历史
+    if (userStore.userInfo?.id && worldStore.currentDestination) {
+      historyApi.add({
+        userId: userStore.userInfo.id,
+        targetType: 2,
+        targetId: destinationId.value,
+        title: worldStore.currentDestination.name,
+        coverUrl: worldStore.currentDestination.imageUrl || ''
+      }).catch(e => console.error(e))
+    }
   }
 })
 

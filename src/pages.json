@@ -168,6 +168,13 @@
         "navigationBarTitleText": "笔记详情",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/me/browsing-history",
+      "style": {
+        "navigationBarTitleText": "浏览历史",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/common/NavBar.vue'
 import { strategyApi, type CommentVO } from '../../api/strategy'
+import { historyApi } from '../../api/history'
 import { useUserStore } from '../../stores/user'
 import CommentTree from '../../components/comment/CommentTree.vue'
 
@@ -31,6 +32,17 @@ async function fetchDetail(id: string) {
     loading.value = true
     const res = await strategyApi.getDetail(id)
     detail.value = res
+    
+    // 记录浏览历史
+    if (userStore.userInfo?.id && detail.value) {
+      historyApi.add({
+        userId: userStore.userInfo.id,
+        targetType: 3,
+        targetId: detail.value.id,
+        title: detail.value.title,
+        coverUrl: detail.value.coverUrl || ''
+      }).catch(e => console.error(e))
+    }
   } catch (e) {
     console.error(e)
   } finally {

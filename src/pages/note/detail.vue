@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { noteApi } from '../../api/note'
+import { historyApi } from '../../api/history'
 import { strategyApi } from '../../api/strategy'
 import { useUserStore } from '../../stores/user'
 import NavBar from '../../components/common/NavBar.vue'
@@ -37,6 +38,17 @@ async function loadDetail(id: string) {
       images.value = JSON.parse(res.images)
     } else if (res.coverUrl) {
       images.value = [res.coverUrl]
+    }
+    
+    // 记录浏览历史
+    if (userStore.userInfo?.id && note.value) {
+      historyApi.add({
+        userId: userStore.userInfo.id,
+        targetType: 4,
+        targetId: note.value.id,
+        title: note.value.title,
+        coverUrl: images.value.length > 0 ? images.value[0] : ''
+      }).catch(e => console.error(e))
     }
   } catch (e) {
     uni.showToast({ title: '加载失败', icon: 'none' })
