@@ -80,6 +80,25 @@ function goDestinationDetail(id: number) {
   uni.navigateTo({ url: `/pages/world/destination?id=${id}` })
 }
 
+// 一键生成攻略
+function generatePlan(item: any) {
+  uni.showLoading({ title: '加载偏好中...', mask: true })
+  
+  const tags = item.tags ? item.tags.split(',') : []
+  if (!tags.includes('自驾')) tags.push('自驾')
+
+  uni.setStorageSync('prefillPlanData', {
+    destination: item.name,
+    days: 5,
+    preferences: tags
+  })
+  
+  setTimeout(() => {
+    uni.hideLoading()
+    uni.navigateTo({ url: '/pages/plan/create/index' })
+  }, 400)
+}
+
 // 高自适应 Swiper 分页逻辑：每页 1大 (featured) + 4小 (2x2 grid)
 const swiperPages = computed(() => {
   const list = worldStore.inspirations || []
@@ -246,7 +265,7 @@ const swiperPages = computed(() => {
               <text class="dest-name">{{ item.name }}</text>
               <text class="dest-sub">{{ item.description }}</text>
             </view>
-            <view class="plan-btn">一键生成攻略 ›</view>
+            <view class="plan-btn" @click.stop="generatePlan(item)">一键生成攻略 ›</view>
           </view>
         </view>
       </view>

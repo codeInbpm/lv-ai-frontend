@@ -22,6 +22,7 @@ export interface Destination {
   name: string
   description: string
   imageUrl: string
+  tags?: string
   isHot: boolean
   lat?: number
   lng?: number

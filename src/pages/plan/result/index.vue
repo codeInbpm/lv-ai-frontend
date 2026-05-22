@@ -30,9 +30,9 @@ onMounted(async () => {
   const planId = props.planId || query.planId || (uni.getStorageSync('lastPlanId'))
   if (!planId) return
 
-  if (query.streaming === 'true') {
+  if (query.polling === 'true' || query.streaming === 'true') {
     isStreaming.value = true
-    startStream(Number(planId))
+    startPolling(Number(planId))
   } else {
     fetchDetail(Number(planId))
   }
@@ -49,49 +49,51 @@ async function fetchDetail(planId: number) {
   }
 }
 
-function startStream(planId: number) {
-  // 使用基础URL
-  const url = 'http://localhost:8080/api/plan/stream/' + planId
-  
-  const requestTask = uni.request({
-    url,
-    method: 'GET',
-    header: {
-      Authorization: userStore.token || ''
-    },
-    enableChunked: true,
-    success: () => {
-      isStreaming.value = false
-      fetchDetail(planId)
-    },
-    fail: (err) => {
-      console.error('Stream Error:', err)
-      isStreaming.value = false
-      fetchDetail(planId)
-    }
-  })
+let pollTimer: any = null
 
-  // 监听数据分片
-  requestTask.onChunkReceived((res) => {
-    const arrayBuffer = res.data
-    const uint8 = new Uint8Array(arrayBuffer)
-    
-    // 处理 UTF-8 字符流 (处理可能的乱码)
+function startPolling(planId: number) {
+  // 轮询检查行程状态
+  pollTimer = setInterval(async () => {
     try {
-      // @ts-ignore
-      if (typeof TextDecoder !== 'undefined') {
-        // @ts-ignore
-        const decoder = new TextDecoder('utf-8')
-        streamingText.value += decoder.decode(uint8)
-      } else {
-        // 兜底方案
-        streamingText.value += String.fromCharCode.apply(null, Array.from(uint8))
+      const res = await planApi.getPlanDetail(planId)
+      // 如果状态为已生成 (假设 status: 1 是生成成功)
+      if (res && res.plan && res.plan.status === 1) {
+        clearInterval(pollTimer)
+        isStreaming.value = false
+        detail.value = res
+        uni.showToast({ title: '生成成功！', icon: 'success' })
+      } else if (res && res.plan && res.plan.status === 3) {
+        // 如果有失败状态
+        throw new Error('生成失败')
       }
-    } catch (e) {
-      console.warn('Decode chunk failed', e)
+    } catch (err) {
+      clearInterval(pollTimer)
+      isStreaming.value = false
+      uni.showModal({
+        title: '生成失败',
+        content: 'AI 生成发生错误，行程可能已失效，请重新生成',
+        showCancel: false,
+        success: () => uni.navigateBack()
+      })
     }
-  })
+  }, 2000)
+
+  // 简单的模拟流式动画文字
+  const msgs = ['分析您的偏好中...', '挑选最佳路线...', '智能安排住宿与美食...', '正在生成最终报告...']
+  let msgIdx = 0
+  setInterval(() => {
+    if (isStreaming.value && msgIdx < msgs.length) {
+      streamingText.value += msgs[msgIdx] + '\n'
+      msgIdx++
+    }
+  }, 2500)
 }
+
+// 组件卸载时清理定时器
+import { onUnmounted } from 'vue'
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 function goDetail() {
   if (!detail.value) return

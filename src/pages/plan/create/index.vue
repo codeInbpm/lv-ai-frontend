@@ -42,11 +42,20 @@ onMounted(() => {
   tomorrow.setDate(tomorrow.getDate() + 1)
   form.startDate = tomorrow.toISOString().split('T')[0]
   
-  // 检查是否有预填目的地
-  const prefill = uni.getStorageSync('prefillDestination')
-  if (prefill) {
-    form.destination = prefill
-    uni.removeStorageSync('prefillDestination')
+  // 检查是否有预填数据（新逻辑，支持天数和偏好）
+  const prefillPlanData = uni.getStorageSync('prefillPlanData')
+  if (prefillPlanData) {
+    form.destination = prefillPlanData.destination || form.destination
+    if (prefillPlanData.days) form.days = prefillPlanData.days
+    if (prefillPlanData.preferences) form.preferences = prefillPlanData.preferences
+    uni.removeStorageSync('prefillPlanData')
+  } else {
+    // 兼容旧的单一目的地预填
+    const prefill = uni.getStorageSync('prefillDestination')
+    if (prefill) {
+      form.destination = prefill
+      uni.removeStorageSync('prefillDestination')
+    }
   }
 
   // 立即询问地理位置授权
@@ -135,13 +144,30 @@ async function handleSubmit() {
     })
 
     uni.hideLoading()
-    // 跳转到结果页，开启流式显示
-    uni.navigateTo({
-      url: `/pages/plan/result/index?planId=${result.plan.id}&streaming=true`
+    
+    // 给用户提示
+    uni.showModal({
+      title: '正在后台生成行程',
+      content: 'AI可能需要几秒到几十秒进行专属规划。您可以留在此页等待，或选择去列表稍后查看。',
+      confirmText: '在此等待',
+      cancelText: '去列表看',
+      success: (res) => {
+        if (res.confirm) {
+          // 在此等待：跳转到结果页进行轮询
+          uni.navigateTo({
+            url: `/pages/plan/result/index?planId=${result.plan.id}&polling=true`
+          })
+        } else {
+          // 后台生成：去列表查看
+          uni.switchTab({
+            url: '/pages/plan/list/index'
+          })
+        }
+      }
     })
   } catch (err) {
     uni.hideLoading()
-    uni.showToast({ title: '生成失败，请重试', icon: 'none' })
+    uni.showToast({ title: '提交失败，请重试', icon: 'none' })
   }
 }
 </script>

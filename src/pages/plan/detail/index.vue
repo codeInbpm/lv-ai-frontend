@@ -80,7 +80,7 @@ const currentDay = computed(() => days.value[activeDayIndex.value])
 
 // 状态映射
 const statusMap: Record<number, { label: string; color: string; bg: string }> = {
-  0: { label: '草稿', color: '#64748b', bg: 'rgba(100,116,139,0.2)' },
+  0: { label: '生成中', color: '#64748b', bg: 'rgba(100,116,139,0.2)' },
   1: { label: '未开始', color: '#d97706', bg: 'rgba(217,119,6,0.2)' },
   2: { label: '进行中', color: '#10b981', bg: 'rgba(16,185,129,0.2)' },
   3: { label: '已完成', color: '#0369a1', bg: 'rgba(3,105,161,0.2)' }
@@ -224,8 +224,8 @@ function sharePlan() {
         </view>
       </view>
 
-      <!-- Day 标签栏 -->
-      <view class="day-tabs-wrap">
+      <!-- Day 标签栏 (仅非生成中状态显示) -->
+      <view class="day-tabs-wrap" v-if="plan.status !== 0">
         <scroll-view class="day-tabs" scroll-x>
           <view class="day-tabs-inner">
             <view
@@ -242,8 +242,22 @@ function sharePlan() {
         </scroll-view>
       </view>
 
+      <!-- 正在生成中提示区 -->
+      <view class="generating-box" v-if="plan.status === 0">
+        <view class="loading-spinner" />
+        <text class="gen-title">AI正在快马加鞭为您规划专属行程</text>
+        <text class="gen-sub">可稍后在“我的行程”列表中查看结果...</text>
+      </view>
+
+      <!-- 异常空数据提示区 (如历史遗留的失败记录) -->
+      <view class="generating-box" v-else-if="days.length === 0">
+        <text style="font-size: 80rpx; margin-bottom: 20rpx">⚠️</text>
+        <text class="gen-title">行程数据异常</text>
+        <text class="gen-sub">此行程似乎没有生成任何路线内容，建议重新生成</text>
+      </view>
+
       <!-- 当天内容 -->
-      <scroll-view class="scroll-content" scroll-y>
+      <scroll-view class="scroll-content" scroll-y v-else>
         <template v-if="currentDay">
           <!-- 当日标题 -->
           <view class="day-header">
@@ -687,7 +701,26 @@ function sharePlan() {
   border-radius: 12rpx;
 }
 
-/* ── 加载 ── */
+/* ── 生成中与加载 ── */
+.generating-box {
+  padding: 120rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.gen-title {
+  margin-top: 40rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #0369a1;
+}
+.gen-sub {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #64748b;
+}
+
 .loading-state {
   flex: 1;
   display: flex;
