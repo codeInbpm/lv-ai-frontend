@@ -1,6 +1,8 @@
 import { useUserStore } from '../stores/user'
 
 const BASE_URL = 'http://localhost:8080/api'
+// const BASE_URL = 'http://192.168.110.55:8080/api'
+
 
 interface RequestOptions {
   url: string

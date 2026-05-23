@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useWorldStore } from '../../stores/world'
 import { useNavBar } from '../../composables/useNavBar'
 import NavBar from '../../components/common/NavBar.vue'
+import { http } from '../../utils/request'
 
-const worldStore = useWorldStore()
 const { totalHeight: navTotalHeight } = useNavBar()
 
 const currentMonth = ref(5) // 默认当前月份为 5 月
@@ -12,83 +11,69 @@ const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 const searchQuery = ref('')
 
+const inspirations = ref<any[]>([])
+const hotSelfdrive = ref<any[]>([])
+const broadcasts = ref<any[]>([])
+const hotTopics = ref<any[]>([])
+
 onMounted(() => {
+  const currentJsMonth = new Date().getMonth() + 1
+  currentMonth.value = currentJsMonth
   fetchData()
 })
 
 async function fetchData() {
-  await Promise.all([
-    worldStore.fetchInspirations(currentMonth.value),
-    worldStore.fetchBroadcasts(),
-    worldStore.fetchHotDestinations(),
-    worldStore.fetchHotTopics()
-  ])
+  fetchInspirations()
+  fetchHotSelfdrive()
+  fetchBroadcasts()
+  fetchHotTopics()
+}
+
+async function fetchInspirations() {
+  try {
+    const res = await http.get<any[]>('/world/inspirations', { month: currentMonth.value })
+    inspirations.value = res || []
+  } catch (error) {}
+}
+
+async function fetchHotSelfdrive() {
+  try {
+    const res = await http.get<any[]>('/world/hot-selfdrive')
+    hotSelfdrive.value = res || []
+  } catch (error) {}
+}
+
+async function fetchBroadcasts() {
+  try {
+    const res = await http.get<any[]>('/world/broadcast')
+    broadcasts.value = res || []
+  } catch (error) {}
+}
+
+async function fetchHotTopics() {
+  try {
+    const res = await http.get<any[]>('/world/topics/hot')
+    hotTopics.value = res || []
+  } catch (error) {}
 }
 
 function selectMonth(m: number) {
   currentMonth.value = m
-  worldStore.fetchInspirations(m)
+  fetchInspirations()
 }
 
-function goInspirationDetail() {
-  uni.navigateTo({ url: `/pages/world/inspiration-detail?month=${currentMonth.value}` })
-}
-
-// 出行灵感卡片点击：优先使用后端返回的 destinationId，无则 fallback 到 title 字符串映射
-function handleInspirationClick(item: any) {
-  // 优先使用后端字段（数据库执行补丁脚本后生效）
-  if (item.destinationId) {
-    console.log('=== 首页点击灵感卡片（用destinationId）===', item.title, '->', item.destinationId)
-    uni.navigateTo({ url: `/pages/world/destination?id=${item.destinationId}` })
-    return
-  }
-  // Fallback：title 字符串精确匹配（注意 trim 去除空格）
-  const cityMapping: Record<string, number> = {
-    '张掖': 101,
-    '古龙峡': 102,
-    '桂林': 103,
-    '西安': 104,
-    '重庆': 105,
-    '丽江': 106,
-    '昆明': 107,
-    '三亚': 108,
-    '成都': 105,
-    '武汉': 104,
-    '杭州': 106,
-    '广州': 102,
-    '呼伦贝尔': 109,
-    '阿勒泰': 110,
-    '香格里拉': 111,
-    '青海湖': 112,
-    '长白山': 113,
-    '九寨沟': 114,
-    '额济纳旗': 115
-  }
-  const titleKey = (item.title || '').trim()
-  const destId = cityMapping[titleKey]
-  console.log('=== 首页点击灵感卡片（用title映射）===', '标题:', titleKey, '->ID:', destId)
-  if (!destId) {
-    console.warn('=== 未找到对应目的地，请检查 title 或 destinationId 字段 ===', item)
-    return
-  }
-  uni.navigateTo({ url: `/pages/world/destination?id=${destId}` })
-}
-
-// 热门目的地点击跳转（模板中调用此方法，需在此定义）
-function goDestinationDetail(id: number) {
-  console.log('=== 热门目的地跳转 ===', 'id:', id)
-  uni.navigateTo({ url: `/pages/world/destination?id=${id}` })
+function goInspirationDetail(id: number) {
+  uni.navigateTo({ url: `/pages/world/inspiration-detail?id=${id}` })
 }
 
 // 一键生成攻略
 function generatePlan(item: any) {
   uni.showLoading({ title: '加载偏好中...', mask: true })
   
-  const tags = item.tags ? item.tags.split(',') : []
-  if (!tags.includes('自驾')) tags.push('自驾')
+  const tags = ['自驾', '自由行']
 
   uni.setStorageSync('prefillPlanData', {
-    destination: item.name,
+    destination: item.title || item.name,
     days: 5,
     preferences: tags
   })
@@ -99,9 +84,9 @@ function generatePlan(item: any) {
   }, 400)
 }
 
-// 高自适应 Swiper 分页逻辑：每页 1大 (featured) + 4小 (2x2 grid)
+// 高自适应 Swiper 分页逻辑
 const swiperPages = computed(() => {
-  const list = worldStore.inspirations || []
+  const list = inspirations.value
   if (list.length === 0) return []
   
   const pages = []
@@ -180,7 +165,7 @@ const swiperPages = computed(() => {
         </scroll-view>
       </view>
 
-      <!-- 城市推荐大卡片网格 - 仿图1、图2：左侧一大图，右侧2行2列网格，支持横向滑动 -->
+      <!-- 城市推荐大卡片网格 -->
       <view class="section grid-section">
         <view class="section-header">
           <text class="section-title">✨ 出行灵感</text>
@@ -197,14 +182,14 @@ const swiperPages = computed(() => {
         >
           <swiper-item v-for="(page, pageIdx) in swiperPages" :key="pageIdx">
             <view class="swiper-page-content">
-              <!-- 左侧一大图卡片 - 点击跳转该月份排行榜 -->
-              <view class="left-big-card" v-if="page.featured" @click="goInspirationDetail">
+              <!-- 左侧一大图卡片 - 点击跳转灵感详情页 -->
+              <view class="left-big-card" v-if="page.featured" @click="goInspirationDetail(page.featured.id)">
                 <image :src="page.featured.coverUrl" mode="aspectFill" class="big-cover" />
                 <view class="big-gradient"></view>
                 
                 <view class="big-badge-panel">
                   <text class="badge-title">{{ currentMonth }}月去哪儿玩</text>
-                  <text class="badge-stats">{{ page.featured.recommendCount }}人推荐</text>
+                  <text class="badge-stats">{{ page.featured.likeCount || 0 }}人推荐</text>
                 </view>
               </view>
               
@@ -214,7 +199,7 @@ const swiperPages = computed(() => {
                   v-for="subItem in page.items" 
                   :key="subItem.id" 
                   class="small-grid-item"
-                  @click="handleInspirationClick(subItem)"
+                  @click="goInspirationDetail(subItem.id)"
                 >
                   <image :src="subItem.coverUrl" mode="aspectFill" class="small-img" />
                   <view class="small-info">
@@ -240,7 +225,7 @@ const swiperPages = computed(() => {
           <text class="label">动态</text>
           <text class="notice">最新资讯</text>
           <swiper class="broadcast-swiper" autoplay interval="4000" circular>
-            <swiper-item v-for="b in worldStore.broadcasts" :key="b.id">
+            <swiper-item v-for="b in broadcasts" :key="b.id">
               <view class="b-text">{{ b.content }}</view>
             </swiper-item>
           </swiper>
@@ -248,22 +233,22 @@ const swiperPages = computed(() => {
         </view>
       </view>
 
-      <!-- 热门目的地 -->
+      <!-- 热门自驾与自由行 -->
       <view class="section hot-dest-section">
         <view class="section-header">
           <text class="section-title">🔥 热门自驾与自由行</text>
         </view>
         <view class="dest-list">
           <view 
-            v-for="item in worldStore.hotDestinations" 
+            v-for="item in hotSelfdrive" 
             :key="item.id" 
             class="dest-card"
-            @click="goDestinationDetail(item.id)"
+            @click="goInspirationDetail(item.id)"
           >
-            <image :src="item.imageUrl" class="dest-icon" mode="aspectFill" />
+            <image :src="item.coverUrl" class="dest-icon" mode="aspectFill" />
             <view class="dest-info">
-              <text class="dest-name">{{ item.name }}</text>
-              <text class="dest-sub">{{ item.description }}</text>
+              <text class="dest-name">{{ item.title }}</text>
+              <text class="dest-sub">{{ item.subtitle }}</text>
             </view>
             <view class="plan-btn" @click.stop="generatePlan(item)">一键生成攻略 ›</view>
           </view>
@@ -278,7 +263,7 @@ const swiperPages = computed(() => {
         </view>
         <scroll-view class="topic-list" scroll-x show-scrollbar="false">
           <view 
-            v-for="item in worldStore.hotTopics" 
+            v-for="item in hotTopics" 
             :key="item.id" 
             class="topic-card"
           >

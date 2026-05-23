@@ -147,23 +147,41 @@ async function checkIn(item: TravelItem) {
   })
 }
 
-// 点击行程单项
-function handleItemClick(item: any) {
-  if (item.type === 4) {
+// 判断是否是需要外部预订的交通工具
+function isExternalTransport(item: any) {
+  const isTrafficType = item.type === 1 || item.type === 4; // 兼容类型错误
+  const isSelfDrive = /租车|自驾/.test(item.name);
+  const isExternal = /飞机|火车|高铁|动车|航班|客车|大巴/.test(item.name);
+  return isTrafficType && isExternal && !isSelfDrive;
+}
+
+// 点击打卡按钮
+function handleCheckInBtnClick(item: any) {
+  if (isExternalTransport(item)) {
     uni.showModal({
       title: '前往预订',
       content: '即将跳转到携程/12306小程序',
       confirmText: '跳转',
       success: (res) => {
         if (res.confirm) {
-          // 这里预留第三方小程序的 appId
-          /*
-          uni.navigateToMiniProgram({
-            appId: 'wx0e6ed4f545c4fc82', // 携程小程序appId(示例)
-            path: 'pages/home/index',
-            success(res) {}
-          })
-          */
+          uni.showToast({ title: '体验版暂未关联外部小程序', icon: 'none' })
+        }
+      }
+    })
+    return
+  }
+  checkIn(item)
+}
+
+// 点击行程单项
+function handleItemClick(item: any) {
+  if (isExternalTransport(item)) {
+    uni.showModal({
+      title: '前往预订',
+      content: '即将跳转到携程/12306小程序',
+      confirmText: '跳转',
+      success: (res) => {
+        if (res.confirm) {
           uni.showToast({ title: '体验版暂未关联外部小程序', icon: 'none' })
         }
       }
@@ -309,7 +327,7 @@ function sharePlan() {
                   <view
                     class="checkin-btn"
                     :class="{ done: item.checkedIn }"
-                    @click.stop="item.checkedIn ? null : handleItemClick(item)"
+                    @click.stop="item.checkedIn ? null : handleCheckInBtnClick(item)"
                   >
                     <text>{{ item.checkedIn ? '✓已打卡' : '打卡' }}</text>
                   </view>
