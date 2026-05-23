@@ -51,6 +51,11 @@ onMounted(async () => {
   }
 })
 
+import { onUnload } from '@dcloudio/uni-app'
+onUnload(() => {
+  uni.$off('refreshPlanDetail', loadData)
+})
+
 async function loadData() {
   if (!planId.value) return
   const [detailRes, checkinsRes] = await Promise.all([
@@ -104,8 +109,16 @@ function getTypeConfig(type: number) {
 // 计算行程进度
 const progress = computed(() => {
   if (!days.value.length) return 0
-  const finished = days.value.filter(d => d.day.finished).length
-  return Math.round((finished / days.value.length) * 100)
+  let totalItems = 0
+  let finishedItems = 0
+  days.value.forEach(d => {
+    if (d.items) {
+      totalItems += d.items.length
+      finishedItems += d.items.filter(item => item.checkedIn).length
+    }
+  })
+  if (totalItems === 0) return 0
+  return Math.round((finishedItems / totalItems) * 100)
 })
 
 // 格式化费用

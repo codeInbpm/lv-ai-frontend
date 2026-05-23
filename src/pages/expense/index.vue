@@ -20,15 +20,18 @@ onMounted(() => {
 
 async function fetchExpenses() {
   try {
-    // 模拟从后端获取用户的记账记录
-    const list = [
-      { id: 1, type: 3, amount: 2500, remark: '往返机票', expenseDate: '2023-10-01' },
-      { id: 2, type: 2, amount: 1200, remark: '三晚酒店', expenseDate: '2023-10-01' },
-      { id: 3, type: 1, amount: 150, remark: '特色火锅', expenseDate: '2023-10-02' },
-      { id: 4, type: 4, amount: 180, remark: '景区门票', expenseDate: '2023-10-03' }
-    ]
-    expenses.value = list
-    totalExpense.value = list.reduce((sum, item) => sum + item.amount, 0)
+    const res = await uni.request({
+      url: 'http://localhost:8080/api/expense/list',
+      method: 'GET',
+      header: {
+        Authorization: uni.getStorageSync('token') || ''
+      }
+    })
+    const result: any = res.data
+    if (result.code === 200) {
+      expenses.value = result.data || []
+      totalExpense.value = expenses.value.reduce((sum, item) => sum + item.amount, 0)
+    }
   } catch (e) {
     console.error(e)
   }
