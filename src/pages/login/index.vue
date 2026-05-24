@@ -7,10 +7,15 @@ const userStore = useUserStore()
 const loading = ref(false)
 
 async function handleWxLogin() {
+  if (loading.value) return
   loading.value = true
   try {
-    await userStore.wxLogin()
-    uni.switchTab({ url: '/pages/index/index' })
+    const isNew = await userStore.wxLogin()
+    if (isNew) {
+      uni.redirectTo({ url: '/pages/login/profile' })
+    } else {
+      uni.reLaunch({ url: '/pages/index/index' })
+    }
   } catch (err) {
     uni.showToast({ title: '登录失败，请重试', icon: 'none' })
   } finally {

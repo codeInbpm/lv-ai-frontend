@@ -122,7 +122,7 @@ async function handleLogout() {
         </view>
 
         <view class="stats-row">
-          <view class="stat-item" @click="uni.navigateTo({ url: '/pages/plan/list/index' })">
+          <view class="stat-item" @click="uni.switchTab({ url: '/pages/plan/list/index' })">
             <text class="stat-num">{{ stats.totalPlans }}</text>
             <text class="stat-label">全部行程</text>
           </view>
@@ -148,7 +148,7 @@ async function handleLogout() {
     <scroll-view class="scroll" scroll-y>
 
       <view class="menu-section card">
-        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/plan/list/index' })">
+        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/me/trips' })">
           <text class="menu-icon">✈️</text>
           <text class="menu-label">我的行程</text>
           <text class="menu-arrow">›</text>
@@ -177,12 +177,12 @@ async function handleLogout() {
       </view>
 
       <view class="menu-section card">
-        <view class="menu-item" @click="uni.showToast({ title: '功能开发中', icon: 'none' })">
+        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/me/settings' })">
           <text class="menu-icon">⚙️</text>
           <text class="menu-label">设置</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item">
+        <view class="menu-item" @click="uni.navigateTo({ url: '/pages/me/about' })">
           <text class="menu-icon">📋</text>
           <text class="menu-label">关于旅途AI</text>
           <text class="menu-arrow">›</text>

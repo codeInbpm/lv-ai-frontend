@@ -3,6 +3,9 @@ import { useUserStore } from '../stores/user'
 const BASE_URL = 'http://localhost:8080/api'
 // const BASE_URL = 'http://192.168.110.55:8080/api'
 
+/** 防止多个请求同时 401 导致多次跳转登录页 */
+let isRedirectingToLogin = false
+
 
 interface RequestOptions {
   url: string
@@ -56,8 +59,16 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
         if (result.code === 200) {
           resolve(result.data)
         } else if (result.code === 401) {
-          userStore.logout()
-          uni.navigateTo({ url: '/pages/login/index' })
+          if (!isRedirectingToLogin) {
+            isRedirectingToLogin = true
+            userStore.logout()
+            uni.navigateTo({
+              url: '/pages/login/index',
+              complete() {
+                isRedirectingToLogin = false
+              }
+            })
+          }
           reject(new Error(result.message))
         } else {
           uni.showToast({ title: result.message || '请求失败', icon: 'none' })

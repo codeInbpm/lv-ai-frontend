@@ -3,6 +3,13 @@ import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
 import { useUserStore } from './stores/user'
 
 onLaunch(() => {
+  // 注册微信隐私授权回调
+  if (wx.onNeedPrivacyAuthorization) {
+    wx.onNeedPrivacyAuthorization((resolve: any) => {
+      resolve({ event: 'agree' })
+    })
+  }
+
   const userStore = useUserStore()
   userStore.initUser()
 })

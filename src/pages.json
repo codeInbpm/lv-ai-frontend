@@ -16,6 +16,13 @@
       }
     },
     {
+      "path": "pages/login/profile",
+      "style": {
+        "navigationBarTitleText": "完善信息",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/plan/create/index",
       "style": {
         "navigationBarTitleText": "创建行程",
@@ -173,6 +180,34 @@
       "path": "pages/me/browsing-history",
       "style": {
         "navigationBarTitleText": "浏览历史",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/me/trips",
+      "style": {
+        "navigationBarTitleText": "我的行程",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/me/settings",
+      "style": {
+        "navigationBarTitleText": "设置",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/me/about",
+      "style": {
+        "navigationBarTitleText": "关于旅途AI",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/footprint/add",
+      "style": {
+        "navigationBarTitleText": "点亮足迹",
         "navigationStyle": "custom"
       }
     }

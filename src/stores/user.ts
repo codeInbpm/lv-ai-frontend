@@ -16,27 +16,31 @@ export const useUserStore = defineStore('user', () => {
         const info = await userApi.getUserInfo()
         userInfo.value = info
       } catch {
-        logout()
+        // 防止与 wxLogin 并发时误清除新 token（竞态条件）
+        if (uni.getStorageSync('token') === savedToken) {
+          logout()
+        }
       }
     }
   }
 
-  /** 微信一键登录 */
-  async function wxLogin() {
-    return new Promise<void>((resolve, reject) => {
+  /** 微信一键登录，返回是否新用户 */
+  async function wxLogin(): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
       uni.login({
         provider: 'weixin',
         async success(loginRes) {
           try {
-            // 获取用户头像和昵称（微信新规需用户主动点击授权）
             const result: LoginVO = await userApi.login({
               code: loginRes.code
             })
             setLoginState(result)
-            // 拉取完整用户信息
-            const info = await userApi.getUserInfo()
-            userInfo.value = info
-            resolve()
+            if (!result.isNew) {
+              // 老用户：拉取完整用户信息
+              const info = await userApi.getUserInfo()
+              userInfo.value = info
+            }
+            resolve(result.isNew)
           } catch (err) {
             reject(err)
           }
