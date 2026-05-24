@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import NavBar from '../../components/common/NavBar.vue'
+import ChinaMap from '../../components/map/ChinaMap.vue'
 import { useNavBar } from '../../composables/useNavBar'
 import { meApi, type FootprintItem, type FootprintStats, type CountryGroup, type CityGroup } from '../../api/me'
 import { useUserStore } from '../../stores/user'
@@ -8,15 +9,17 @@ import { useUserStore } from '../../stores/user'
 const { totalHeight: navTotalHeight } = useNavBar()
 const userStore = useUserStore()
 
-// 地图
-const markers = ref<any[]>([])
-
 // 数据
 const footprintList = ref<FootprintItem[]>([])
 const stats = ref<FootprintStats>({ cityCount: 0, provinceCount: 0, totalFootprints: 0, checkinDays: 0 })
 const countryGroups = ref<CountryGroup[]>([])
 const cityGroups = ref<CityGroup[]>([])
 const loading = ref(true)
+
+// 城市详情弹窗
+const showCityPopup = ref(false)
+const selectedCity = ref<CityGroup | null>(null)
+const selectedCityFootprints = ref<FootprintItem[]>([])
 
 // Tab
 const tabs = [
@@ -67,26 +70,10 @@ async function fetchAll() {
     stats.value = fpRes?.stats || { cityCount: 0, provinceCount: 0, totalFootprints: 0, checkinDays: 0 }
     countryGroups.value = countryRes || []
     cityGroups.value = cityRes || []
-    buildMarkers()
   } catch (e) {
     console.error('[footprint] fetchAll error:', e)
   }
   loading.value = false
-}
-
-function buildMarkers() {
-  markers.value = footprintList.value
-    .filter(f => f.lat && f.lng)
-    .map(f => ({
-      id: f.id,
-      latitude: Number(f.lat),
-      longitude: Number(f.lng),
-      title: f.locationName,
-      iconPath: '/static/icons/marker.png',
-      width: 28,
-      height: 28,
-      callout: { content: f.locationName, padding: 6, borderRadius: 6, display: 'BYCLICK' }
-    }))
 }
 
 function onTabChange(val: string) {
@@ -120,6 +107,48 @@ function goAdd() {
   uni.navigateTo({ url: '/pages/footprint/add' })
 }
 
+function onCityTap(group: CityGroup) {
+  selectedCity.value = group
+  selectedCityFootprints.value = footprintList.value.filter(f => f.city === group.city)
+  showCityPopup.value = true
+}
+
+function closeCityPopup() {
+  showCityPopup.value = false
+}
+
+function getCityFirstLocation(): string {
+  const fps = selectedCityFootprints.value
+  if (!fps.length) return ''
+  const withName = fps.find(f => f.locationName)
+  return withName?.locationName || ''
+}
+
+function getCityAllImages(): string[] {
+  const result: string[] = []
+  selectedCityFootprints.value.forEach(f => {
+    parseImages(f.images).forEach(img => {
+      if (img && !result.includes(img)) result.push(img)
+    })
+  })
+  return result
+}
+
+function formatCheckinDate(t?: string): string {
+  if (!t) return ''
+  return t.substring(0, 10).replace(/-/g, '.')
+}
+
+// 地图标记数据
+const checkedCities = computed(() => {
+  return cityGroups.value.map(g => ({ city: g.city, count: g.footprintCount }))
+})
+
+function onMapCityTap(city: string) {
+  const group = cityGroups.value.find(g => g.city === city)
+  if (group) onCityTap(group)
+}
+
 function parseImages(img?: string): string[] {
   if (!img) return []
   try { return JSON.parse(img) } catch { return [] }
@@ -140,11 +169,9 @@ function formatDay(d: string) {
     <NavBar fixed back title="我的足迹" textColor="#ffffff"
       background="linear-gradient(135deg, #0c4a6e, #0ea5e9)" :placeholder="true" />
 
-    <!-- ====== 世界 Tab：世界地图 ====== -->
+    <!-- ====== 世界 Tab：中国地图 ====== -->
     <view v-if="activeTab === 'world'" class="map-section">
-      <map id="worldMap" class="map-view"
-        :latitude="20" :longitude="105" :scale="3"
-        :markers="markers" />
+      <ChinaMap :checkedCities="checkedCities" @cityTap="onMapCityTap" />
     </view>
 
     <!-- ====== 角落 Tab：当前位置地图 ====== -->
@@ -218,16 +245,19 @@ function formatDay(d: string) {
           </view>
           <view class="city-grid">
             <view v-for="(group, idx) in cityGroups" :key="group.city"
-              :class="['city-card', { 'city-card-wide': idx % 3 === 0 }]">
-              <image v-if="parseImages(group.coverImages)[0]"
-                :src="parseImages(group.coverImages)[0]"
-                class="city-bg" mode="aspectFill" />
-              <view v-else class="city-bg-placeholder" />
-              <view class="city-overlay" />
-              <!-- 右上角小图 -->
-              <view v-if="parseImages(group.coverImages).length > 1" class="city-thumbs">
-                <image v-for="(img, i) in parseImages(group.coverImages).slice(1, 3)" :key="i"
-                  :src="img" class="city-thumb" mode="aspectFill" />
+              :class="['city-card', { 'city-card-wide': idx % 3 === 0 }]"
+              @click="onCityTap(group)">
+              <view class="city-bg-wrap">
+                <image v-if="parseImages(group.coverImages)[0]"
+                  :src="parseImages(group.coverImages)[0]"
+                  class="city-bg" mode="aspectFill" />
+                <view v-else class="city-bg-placeholder" />
+                <view class="city-overlay" />
+                <!-- 右上角小图 -->
+                <view v-if="parseImages(group.coverImages).length > 1" class="city-thumbs">
+                  <image v-for="(img, i) in parseImages(group.coverImages).slice(1, 3)" :key="i"
+                    :src="img" class="city-thumb" mode="aspectFill" />
+                </view>
               </view>
               <!-- 底部信息 -->
               <view class="city-bottom">
@@ -297,6 +327,52 @@ function formatDay(d: string) {
     <view class="fab" @click="goAdd">
       <text class="fab-icon">+</text>
       <text class="fab-text">点亮足迹</text>
+    </view>
+
+    <!-- 城市详情弹窗 -->
+    <view v-if="showCityPopup" class="popup-mask" @click="closeCityPopup">
+      <view class="popup-panel" @click.stop>
+        <view class="popup-handle" />
+        <template v-if="selectedCity">
+          <!-- 标题行 -->
+          <view class="popup-header">
+            <view class="popup-title-row">
+              <text class="popup-city-name">{{ selectedCity.city }}</text>
+              <view class="popup-badge">
+                <text class="popup-badge-text">已打卡</text>
+              </view>
+            </view>
+            <text class="popup-visit-count">去过 {{ selectedCity.footprintCount }} 次</text>
+          </view>
+
+          <!-- 城市图片 -->
+          <image v-if="parseImages(selectedCity.coverImages)[0]"
+            :src="parseImages(selectedCity.coverImages)[0]"
+            class="popup-cover" mode="aspectFill" />
+
+          <!-- 打卡时间 -->
+          <view class="popup-section popup-time-section">
+            <text class="popup-section-label">打卡时间</text>
+            <text class="popup-section-value">{{ formatCheckinDate(selectedCity.firstTime) }}</text>
+          </view>
+
+          <!-- 旅行足迹 -->
+          <view v-if="getCityFirstLocation()" class="popup-section">
+            <text class="popup-section-label">旅行足迹</text>
+            <text class="popup-section-value popup-location">{{ getCityFirstLocation() }}</text>
+          </view>
+
+          <!-- 照片网格 -->
+          <view v-if="getCityAllImages().length > 0" class="popup-photos">
+            <view v-for="(img, i) in getCityAllImages().slice(0, 4)" :key="i" class="popup-photo-item">
+              <image :src="img" class="popup-photo" mode="aspectFill" />
+              <view v-if="i === 3 && getCityAllImages().length > 4" class="popup-photo-more">
+                <text class="popup-photo-more-text">+{{ getCityAllImages().length - 4 }}</text>
+              </view>
+            </view>
+          </view>
+        </template>
+      </view>
     </view>
   </view>
 </template>
@@ -411,10 +487,17 @@ function formatDay(d: string) {
   border-radius: 20rpx;
   overflow: hidden;
   height: 340rpx;
+  display: flex;
+  flex-direction: column;
 }
 .city-card-wide {
   grid-column: span 2;
   height: 380rpx;
+}
+.city-bg-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
 }
 .city-bg {
   position: absolute;
@@ -435,6 +518,7 @@ function formatDay(d: string) {
   width: 100%;
   height: 100%;
   background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.55) 100%);
+  pointer-events: none;
 }
 .city-thumbs {
   position: absolute;
@@ -443,6 +527,7 @@ function formatDay(d: string) {
   display: flex;
   flex-direction: column;
   gap: 8rpx;
+  pointer-events: none;
 }
 .city-thumb {
   width: 100rpx;
@@ -451,11 +536,11 @@ function formatDay(d: string) {
   border: 2rpx solid rgba(255,255,255,0.5);
 }
 .city-bottom {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 24rpx;
+  padding: 20rpx 24rpx;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.4));
+  position: relative;
+  z-index: 2;
+  margin-top: -80rpx;
 }
 .city-name {
   font-size: 34rpx;
@@ -661,4 +746,120 @@ function formatDay(d: string) {
 }
 .fab-icon { font-size: 36rpx; color: #fff; font-weight: 700; }
 .fab-text { font-size: 26rpx; color: #fff; font-weight: 600; }
+
+/* ========== 城市详情弹窗 ========== */
+.popup-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 500;
+  display: flex;
+  align-items: flex-end;
+}
+.popup-panel {
+  width: 100%;
+  background: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 16rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.popup-handle {
+  width: 64rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: #e5e7eb;
+  margin: 0 auto 28rpx;
+}
+.popup-header {
+  margin-bottom: 28rpx;
+}
+.popup-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 10rpx;
+}
+.popup-city-name {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #111827;
+}
+.popup-badge {
+  background: #fce7f3;
+  border-radius: 8rpx;
+  padding: 4rpx 14rpx;
+}
+.popup-badge-text {
+  font-size: 20rpx;
+  color: #ec4899;
+  font-weight: 600;
+}
+.popup-visit-count {
+  font-size: 26rpx;
+  color: #6b7280;
+}
+.popup-cover {
+  width: 100%;
+  height: 340rpx;
+  border-radius: 20rpx;
+  margin-bottom: 28rpx;
+}
+.popup-section {
+  margin-bottom: 24rpx;
+}
+.popup-section-label {
+  font-size: 24rpx;
+  color: #9ca3af;
+  display: block;
+  margin-bottom: 8rpx;
+}
+.popup-section-value {
+  font-size: 30rpx;
+  color: #111827;
+  font-weight: 600;
+  display: block;
+}
+.popup-time-section {
+  background: #f3f4f6;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+}
+.popup-time-section .popup-section-label {
+  margin-bottom: 6rpx;
+}
+.popup-location {
+  font-weight: 500;
+}
+.popup-photos {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 8rpx;
+  padding-bottom: 16rpx;
+}
+.popup-photo-item {
+  position: relative;
+  flex: 1;
+  border-radius: 16rpx;
+  overflow: hidden;
+  height: 180rpx;
+}
+.popup-photo {
+  width: 100%;
+  height: 100%;
+}
+.popup-photo-more {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.popup-photo-more-text {
+  font-size: 34rpx;
+  color: #fff;
+  font-weight: 700;
+}
 </style>
