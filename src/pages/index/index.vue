@@ -21,7 +21,7 @@ const bannerList = ref([
 onMounted(async () => {
   try {
     const [hot, strategiesRes] = await Promise.all([
-      discoverApi.getHotDestinations().catch(() => []),
+      discoverApi.getHotDestinations(4).catch(() => []),
       discoverApi.getStrategies({ size: 3 }).catch(() => null)
     ])
     hotDestinations.value = hot || []
@@ -54,6 +54,17 @@ function goFeature(path: string) {
 
 function goDestinationDetail(id: number) {
   uni.navigateTo({ url: `/pages/destination/detail/index?id=${id}` })
+}
+
+// 替换失效的外链图片为本地图片
+function getLocalImageFallback(url: string) {
+  if (!url || url.includes('unsplash.com')) {
+    if (url && url.includes('1543883391')) return '/static/images/sanya_beach.png'
+    if (url && url.includes('1506744626753')) return '/static/images/yunnan_scenery.png'
+    if (url && url.includes('1506744900247')) return '/static/images/chengdu_food.png'
+    return '/static/images/sanya_beach.png'
+  }
+  return url
 }
 </script>
 
@@ -136,7 +147,7 @@ function goDestinationDetail(id: number) {
       <view class="section" v-if="hotDestinations.length">
         <view class="section-header">
           <text class="section-title">热门目的地</text>
-          <text class="section-more" @click="uni.switchTab({url:'/pages/discover/index'})">更多 ›</text>
+          <text class="section-more" @click="uni.navigateTo({url:'/pages/discover/index'})">更多 ›</text>
         </view>
         <scroll-view class="hot-scroll" scroll-x>
           <view class="hot-list">
@@ -147,10 +158,11 @@ function goDestinationDetail(id: number) {
               @click="goDestinationDetail(dest.id)"
             >
               <view class="hot-img-wrap">
-                <text class="hot-emoji">🏔</text>
+                <image v-if="dest.imageUrl" :src="getLocalImageFallback(dest.imageUrl)" mode="aspectFill" style="width:100%;height:100%;border-radius:50%;" />
+                <text v-else class="hot-emoji">🏔</text>
               </view>
               <text class="hot-name">{{ dest.name }}</text>
-              <text class="hot-desc">{{ dest.desc }}</text>
+              <text class="hot-desc">{{ dest.description }}</text>
             </view>
           </view>
         </scroll-view>
@@ -169,7 +181,7 @@ function goDestinationDetail(id: number) {
             :key="item.id"
             @click="goStrategyDetail(item.id)"
           >
-            <image class="plan-cover" :src="item.coverUrl || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=500'" mode="aspectFill" />
+            <image class="plan-cover" :src="getLocalImageFallback(item.coverUrl)" mode="aspectFill" />
             <view class="plan-info">
               <text class="plan-title">{{ item.title }}</text>
               <view style="display:flex;gap:10rpx;margin-bottom:12rpx;">
@@ -333,7 +345,15 @@ function goDestinationDetail(id: number) {
 }
 .hot-emoji { font-size: 40rpx; }
 .hot-name { font-size: 28rpx; font-weight: 600; color: var(--text-primary); margin-bottom: 4rpx; }
-.hot-desc { font-size: 22rpx; color: var(--text-tertiary); white-space: normal; text-align: center; max-width: 120rpx; }
+.hot-desc { 
+  font-size: 22rpx; 
+  color: var(--text-tertiary); 
+  text-align: center; 
+  width: 120rpx; 
+  overflow: hidden; 
+  white-space: nowrap; 
+  text-overflow: ellipsis; 
+}
 
 .plan-list { display: flex; flex-direction: column; gap: 20rpx; }
 .plan-card {

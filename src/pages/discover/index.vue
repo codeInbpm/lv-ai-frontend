@@ -8,11 +8,7 @@ import { useNavBar } from '../../composables/useNavBar'
 const { totalHeight: navTotalHeight } = useNavBar()
 
 const hotList = ref<HotDestination[]>([])
-const planList = ref<TravelPlan[]>([])
-const keyword = ref('')
 const loading = ref(false)
-const hasMore = ref(true)
-const page = ref(1)
 
 onMounted(async () => {
   await loadData()
@@ -21,46 +17,11 @@ onMounted(async () => {
 async function loadData() {
   loading.value = true
   try {
-    const [hot, plans] = await Promise.all([
-      discoverApi.getHotDestinations(),
-      discoverApi.getPublicPlans({ page: 1, size: 10 })
-    ])
-    hotList.value = hot
-    planList.value = plans.records
-    hasMore.value = plans.current < plans.pages
-    page.value = 1
+    const hot = await discoverApi.getHotDestinations(20)
+    hotList.value = hot || []
   } finally {
     loading.value = false
   }
-}
-
-async function loadMore() {
-  if (!hasMore.value || loading.value) return
-  loading.value = true
-  page.value++
-  try {
-    const result = await discoverApi.getPublicPlans({ page: page.value, keyword: keyword.value, size: 10 })
-    planList.value.push(...result.records)
-    hasMore.value = result.current < result.pages
-  } finally {
-    loading.value = false
-  }
-}
-
-async function search() {
-  loading.value = true
-  try {
-    const result = await discoverApi.getPublicPlans({ keyword: keyword.value, page: 1, size: 10 })
-    planList.value = result.records
-    hasMore.value = result.current < result.pages
-    page.value = 1
-  } finally {
-    loading.value = false
-  }
-}
-
-function goPlanDetail(planId: number) {
-  uni.navigateTo({ url: `/pages/plan/detail/index?planId=${planId}` })
 }
 
 function goCreate(destination?: string) {
@@ -69,6 +30,17 @@ function goCreate(destination?: string) {
   }
   uni.navigateTo({ url: '/pages/plan/create/index' })
 }
+
+// 替换失效的外链图片为本地图片
+function getLocalImageFallback(url: string) {
+  if (!url || url.includes('unsplash.com')) {
+    if (url && url.includes('1543883391')) return '/static/images/sanya_beach.png'
+    if (url && url.includes('1506744626753')) return '/static/images/yunnan_scenery.png'
+    if (url && url.includes('1506744900247')) return '/static/images/chengdu_food.png'
+    return '/static/images/sanya_beach.png'
+  }
+  return url
+}
 </script>
 
 <template>
@@ -76,27 +48,15 @@ function goCreate(destination?: string) {
     <NavBar
       transparent
       fixed
+      :back="true"
       title="发现好去处"
       textColor="#ffffff"
       background="linear-gradient(135deg, #0369a1, #0ea5e9)"
       :placeholder="false"
     />
 
-    <!-- 顶部搜索区：包含精确占位 -->
-    <view class="header">
-      <view :style="{ height: navTotalHeight + 'px' }" />
-      <view class="search-box">
-        <text class="search-icon">🔍</text>
-        <input
-          v-model="keyword"
-          class="search-input"
-          placeholder="搜索目的地或行程"
-          confirm-type="search"
-          @confirm="search"
-        />
-        <text class="search-btn" @click="search">搜索</text>
-      </view>
-    </view>
+    <!-- 占位区：防止内容被 fixed 导航栏遮挡 -->
+    <view :style="{ height: navTotalHeight + 'px', background: 'linear-gradient(135deg, #0369a1, #0ea5e9)' }" />
 
     <scroll-view class="scroll" scroll-y @scrolltolower="loadMore">
 
@@ -113,60 +73,19 @@ function goCreate(destination?: string) {
             @click="goCreate(dest.name)"
           >
             <view class="hot-img">
-              <text class="hot-emoji">🏔</text>
+              <image v-if="dest.imageUrl" :src="getLocalImageFallback(dest.imageUrl)" mode="aspectFill" style="width:100%;height:100%;border-radius:16rpx;" />
+              <text v-else class="hot-emoji">🏔</text>
             </view>
             <view class="hot-info">
               <text class="hot-name">{{ dest.name }}</text>
-              <text class="hot-desc">{{ dest.desc }}</text>
+              <text class="hot-desc">{{ dest.description }}</text>
             </view>
             <text class="hot-btn">规划 ›</text>
           </view>
         </view>
       </view>
 
-      <!-- 精选攻略 -->
-      <view class="section">
-        <view class="section-header">
-          <text class="section-title">📖 精选攻略</text>
-        </view>
 
-        <view v-if="!planList.length && !loading" class="empty">
-          <text class="empty-icon">🗺️</text>
-          <text>暂无攻略，快来发布第一篇吧</text>
-        </view>
-
-        <view class="plan-grid">
-          <view
-            class="plan-card"
-            v-for="plan in planList"
-            :key="plan.id"
-            @click="goPlanDetail(plan.id)"
-          >
-            <view class="plan-cover">
-              <text class="plan-emoji">✈️</text>
-              <view class="plan-days-badge">{{ plan.days }}天</view>
-            </view>
-            <view class="plan-body">
-              <text class="plan-title">{{ plan.title }}</text>
-              <text class="plan-route">{{ plan.departure }} → {{ plan.destination }}</text>
-              <view class="plan-footer">
-                <text class="plan-date">{{ plan.startDate }}</text>
-                <view class="plan-stats">
-                  <text>👁 {{ plan.viewCount }}</text>
-                  <text>❤️ {{ plan.collectCount }}</text>
-                </view>
-              </view>
-            </view>
-          </view>
-        </view>
-
-        <view v-if="loading" class="loading-more">
-          <text>加载中...</text>
-        </view>
-        <view v-else-if="!hasMore && planList.length" class="no-more">
-          <text>— 已经到底了 —</text>
-        </view>
-      </view>
 
       <view style="height: 100rpx" />
     </scroll-view>
@@ -217,7 +136,15 @@ function goCreate(destination?: string) {
 .hot-emoji { font-size: 40rpx; }
 .hot-info { flex: 1; }
 .hot-name { font-size: 30rpx; font-weight: 600; color: var(--text-primary); display: block; }
-.hot-desc { font-size: 24rpx; color: var(--text-tertiary); margin-top: 4rpx; display: block; }
+.hot-desc { 
+  font-size: 24rpx; 
+  color: var(--text-tertiary); 
+  margin-top: 6rpx; 
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .hot-btn { font-size: 26rpx; color: var(--primary); font-weight: 600; }
 
 .empty {

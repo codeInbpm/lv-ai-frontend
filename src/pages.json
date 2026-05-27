@@ -1,6 +1,13 @@
 {
   "pages": [
     {
+      "path": "pages/discover/index",
+      "style": {
+        "navigationBarTitleText": "发现好去处",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/index/index",
       "style": {
         "navigationBarTitleText": "旅途AI",
