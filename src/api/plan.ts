@@ -82,6 +82,19 @@ export interface PlanDetailVO {
   days: DayWithItems[]
 }
 
+export interface AiPlanModifyDTO {
+  planId: number
+  dayId: number
+  message: string
+  sessionId: string
+}
+
+export interface AiPlanModifyResultVO {
+  explanation: string
+  success: boolean
+  affectedDayId?: number
+}
+
 export interface PageResult<T> {
   records: T[]
   total: number
@@ -105,7 +118,25 @@ export const planApi = {
   deletePlan: (planId: number) => http.del(`/plan/${planId}`),
   /** 更新行程状态 */
   updatePlanStatus: (planId: number, status: number) =>
-    http.put(`/plan/${planId}/status`, null),
+    http.put(`/plan/${planId}/status`, null, false, undefined, { status }),
   /** 收藏/取消收藏 */
-  toggleCollect: (planId: number) => http.post<boolean>(`/plan/${planId}/collect`)
+  toggleCollect: (planId: number) => http.post<boolean>(`/plan/${planId}/collect`),
+  
+  /** 添加行程明细项 */
+  addPlanItem: (data: Partial<TravelItem>) => http.post<TravelItem>('/plan/item', data),
+  /** 修改行程明细项 */
+  updatePlanItem: (itemId: number, data: Partial<TravelItem>) => http.put<TravelItem>(`/plan/item/${itemId}`, data),
+  /** 删除行程明细项 */
+  deletePlanItem: (itemId: number) => http.del(`/plan/item/${itemId}`),
+  /** 批量重排行程项 */
+  sortPlanItems: (itemIds: number[]) => http.put<void>('/plan/items/sort', itemIds),
+  
+  /** 修改每日行程的主题描述 */
+  updatePlanDay: (dayId: number, data: Partial<TravelDay>) => http.put<TravelDay>(`/plan/day/${dayId}`, data),
+  /** 为行程增加一天 */
+  addPlanDay: (planId: number) => http.post<TravelDay>('/plan/day', null, false, undefined, { planId }),
+  /** 删除行程的一天 */
+  deletePlanDay: (dayId: number) => http.del<void>(`/plan/day/${dayId}`),
+  /** AI 对话式增量修改行程细项 */
+  aiPlanModify: (data: AiPlanModifyDTO) => http.post<AiPlanModifyResultVO>('/ai/plan/modify', data)
 }

@@ -29,15 +29,30 @@ const statusMap: Record<number, { label: string; color: string; bg: string }> = 
 }
 
 onMounted(async () => {
-  if (!userStore.requireLogin()) return
-  await loadPlans()
+  try {
+    if (!userStore.isLogin) {
+      uni.navigateTo({ url: '/pages/login/index' })
+      loading.value = false
+      return
+    }
+    await loadPlans()
+  } catch (err) {
+    console.error("onMounted 挂载加载行程失败:", err)
+    loading.value = false
+  }
 })
 
 async function loadPlans() {
   loading.value = true
   try {
     const result = await planStore.fetchMyPlans(activeTab.value)
-    plans.value = result.records
+    plans.value = result?.records ?? []
+  } catch (err: any) {
+    console.error("loadPlans 加载行程列表异常:", err)
+    uni.showToast({
+      title: err?.message || '获取行程列表失败，请检查网络或后端服务',
+      icon: 'none'
+    })
   } finally {
     loading.value = false
   }
