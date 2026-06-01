@@ -6,6 +6,7 @@ import NavBar from '../../../components/common/NavBar.vue'
 
 const planStore = usePlanStore()
 const loading = ref(false)
+const submitLoading = ref(false)
 
 const form = reactive({
   departure: '',
@@ -61,34 +62,41 @@ onMounted(() => {
   // 立即询问地理位置授权
   uni.getLocation({
     type: 'gcj02',
-    success: (res) => {
+    success: async (res) => {
       form.departureLat = res.latitude
       form.departureLng = res.longitude
       
-      // 调用腾讯地图反解析 (带重试机制)
-      const fetchLocation = (retryCount = 0) => {
-        uni.request({
-          url: `https://apis.map.qq.com/ws/geocoder/v1/?location=${res.latitude},${res.longitude}&key=66ABZ-QFMRI-BQWGG-UTPBO-NEZA3-SLFGI`,
-          method: 'GET',
-          success: (response: any) => {
-            if (response.data && response.data.status === 0) {
-              const adInfo = response.data.result.ad_info || response.data.result.address_component
-              form.departure = adInfo.city || adInfo.province || '当前位置'
-            } else if (response.data && response.data.status === 120 && retryCount < 2) {
-              // 触发并发限制，延迟 500ms 重试
-              setTimeout(() => fetchLocation(retryCount + 1), 500)
-            } else {
-              form.departure = response.data?.message ? `解析失败:${response.data.message}` : '定位成功(解析失败)'
-              console.error('腾讯地图解析失败:', response.data)
+      try {
+        // 从后端安全拉取动态地图 Key
+        const mapKey = await planApi.getMapKey()
+        
+        // 调用腾讯地图反解析 (带重试机制)
+        const fetchLocation = (retryCount = 0) => {
+          uni.request({
+            url: `https://apis.map.qq.com/ws/geocoder/v1/?location=${res.latitude},${res.longitude}&key=${mapKey}`,
+            method: 'GET',
+            success: (response: any) => {
+              if (response.data && response.data.status === 0) {
+                const adInfo = response.data.result.ad_info || response.data.result.address_component
+                form.departure = adInfo.city || adInfo.province || '当前位置'
+              } else if (response.data && response.data.status === 120 && retryCount < 2) {
+                // 触发并发限制，延迟 500ms 重试
+                setTimeout(() => fetchLocation(retryCount + 1), 500)
+              } else {
+                form.departure = response.data?.message ? `解析失败:${response.data.message}` : '定位成功(解析失败)'
+                console.error('腾讯地图解析失败:', response.data)
+              }
+            },
+            fail: () => {
+              form.departure = '定位成功(请求失败)'
             }
-          },
-          fail: () => {
-            form.departure = '定位成功(请求失败)'
-          }
-        })
+          })
+        }
+        fetchLocation()
+      } catch (err) {
+        console.error('拉取地图Key失败:', err)
+        form.departure = '当前位置'
       }
-      
-      fetchLocation()
     },
     fail: () => {
       console.log('获取地理位置失败或用户拒绝')
@@ -125,10 +133,12 @@ function togglePreference(item: string) {
 }
 
 async function handleSubmit() {
+  if (submitLoading.value) return
   if (!form.departure || !form.destination || !form.startDate) {
     return uni.showToast({ title: '请填写必要信息', icon: 'none' })
   }
 
+  submitLoading.value = true
   uni.showLoading({ title: 'AI规划中...', mask: true })
 
   try {
@@ -165,9 +175,18 @@ async function handleSubmit() {
         }
       }
     })
-  } catch (err) {
+  } catch (err: any) {
     uni.hideLoading()
-    uni.showToast({ title: '提交失败，请重试', icon: 'none' })
+    // 优雅读取并展示后端返回的高情商阻断文案，如“您已有正在规划中的行程”
+    const errorMsg = err?.data?.message || '提交规划请求失败，请稍后重试'
+    uni.showModal({
+      title: '规划提交未成功',
+      content: errorMsg,
+      showCancel: false
+    })
+  } finally {
+    submitLoading.value = false
+    uni.hideLoading()
   }
 }
 </script>

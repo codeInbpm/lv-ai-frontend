@@ -52,31 +52,39 @@ async function fetchDetail(planId: number) {
 let pollTimer: any = null
 
 function startPolling(planId: number) {
-  // 轮询检查行程状态
+  // 轮询检查行程状态，适度增加轮询间隔到 2.5 秒，减缓后端并发开销
   pollTimer = setInterval(async () => {
     try {
       const res = await planApi.getPlanDetail(planId)
-      // 如果状态为已生成 (假设 status: 1 是生成成功)
+      // 如果状态为已生成 (1: 正常/已生成)
       if (res && res.plan && res.plan.status === 1) {
         clearInterval(pollTimer)
         isStreaming.value = false
+        loading.value = false
         detail.value = res
         uni.showToast({ title: '生成成功！', icon: 'success' })
-      } else if (res && res.plan && res.plan.status === 3) {
-        // 如果有失败状态
-        throw new Error('生成失败')
+      } else if (res && res.plan && (res.plan.status === 3 || res.plan.status === 4)) {
+        // 核心阻断：一旦检测到 status = 4 (生成失败) 或状态 3，立即抛出错误终止轮询
+        throw new Error(res.plan.description || 'AI规划未成功完成，行程数据异常')
       }
-    } catch (err) {
+    } catch (err: any) {
       clearInterval(pollTimer)
       isStreaming.value = false
+      const errorMsg = err?.message || 'AI 生成发生错误，行程可能已失效，请重新生成'
+      
       uni.showModal({
-        title: '生成失败',
-        content: 'AI 生成发生错误，行程可能已失效，请重新生成',
+        title: '规划未成功',
+        content: errorMsg,
         showCancel: false,
-        success: () => uni.navigateBack()
+        success: () => {
+          // 优雅闭环：直接跳转到详情页以展现我们在详情页精调的、极其 Premium 且自带“重新生成预填”大按钮的 status=4 失败卡片！
+          uni.redirectTo({
+            url: `/pages/plan/detail/index?planId=${planId}`
+          })
+        }
       })
     }
-  }, 2000)
+  }, 2500)
 
   // 简单的模拟流式动画文字
   const msgs = ['分析您的偏好中...', '挑选最佳路线...', '智能安排住宿与美食...', '正在生成最终报告...']

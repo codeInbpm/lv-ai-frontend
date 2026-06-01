@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { planApi, type PlanDetailVO, type TravelItem, type TravelDay, type DayWithItems } from '../../../api/plan'
 import { http } from '../../../utils/request'
@@ -11,7 +11,6 @@ const detail = ref<PlanDetailVO | null>(null)
 const loading = ref(true)
 const activeDayIndex = ref(0)
 const { totalHeight: navTotalHeight } = useNavBar()
-
 // 编辑日程状态
 const isEditing = ref(false)
 
@@ -32,7 +31,7 @@ const lastMsgId = ref('')
 const showItemForm = ref(false)
 const isEditingItem = ref(false)
 const editingItemId = ref<number | null>(null)
-const itemForm = ref({
+const itemForm = ref<any>({
   type: 3,
   name: '',
   address: '',
@@ -41,7 +40,9 @@ const itemForm = ref({
   duration: 120,
   estimatedCost: '',
   description: '',
-  tips: ''
+  tips: '',
+  lat: null,
+  lng: null
 })
 
 const itemTypeOptions = [
@@ -102,12 +103,162 @@ const plan = computed(() => detail.value?.plan)
 const days = computed(() => detail.value?.days ?? [])
 const currentDay = computed(() => days.value[activeDayIndex.value])
 
+// 🗺️ 地图路线打点状态
+const viewMode = ref<'list' | 'map'>('list') // 当前视图模式
+const mapCenter = ref({ latitude: 24.476, longitude: 118.082 })
+const mapScale = ref(13)
+const activeCardIndex = ref(0) // 当前底部激活聚焦的卡片索引
+const showAllCallouts = ref(false) // 是否默认展示全部景点的名称气泡
+
+// 🏛️ 景点详情抽屉弹窗状态
+const showItemDetailDrawer = ref(false)
+const selectedItemForDetail = ref<TravelItem | null>(null)
+
+function openItemDetail(item: TravelItem) {
+  selectedItemForDetail.value = item
+  showItemDetailDrawer.value = true
+}
+
+function closeItemDetailDrawer() {
+  showItemDetailDrawer.value = false
+  // 延迟清空 selectedItemForDetail，以防动画未结束发生文字闪烁
+  setTimeout(() => {
+    if (!showItemDetailDrawer.value) {
+      selectedItemForDetail.value = null
+    }
+  }, 350)
+}
+
+// 计算属性：动态清洗并生成地图 Markers
+const mapMarkers = computed(() => {
+  if (!currentDay.value) return []
+  console.log('--- 当前天 items 经纬度数据 ---', currentDay.value.items.map(i => ({ name: i.name, lat: i.lat, lng: i.lng })))
+  const markers: any[] = []
+  currentDay.value.items.forEach((item, idx) => {
+    if (item.lat && item.lng) {
+      markers.push({
+        id: idx, // 这样 id 就是 currentDay.value.items 中的原始索引！
+        latitude: item.lat,
+        longitude: item.lng,
+        title: item.name,
+        iconPath: '/static/icons/marker.png', // 极精美的定位图标路径
+        width: 28,
+        height: 38,
+        // 数字气泡 Callout
+        callout: {
+          content: `${markers.length + 1}. ${item.name}\n🕒 ${item.startTime?.slice(0, 5) || ''}`,
+          color: '#ffffff',
+          fontSize: 12,
+          borderRadius: 8,
+          bgColor: '#0284c7', // 蔚蓝色背景
+          padding: 8,
+          display: showAllCallouts.value ? 'ALWAYS' : (activeCardIndex.value === idx ? 'ALWAYS' : 'BYCLICK')
+        },
+        label: {
+          content: String(markers.length + 1),
+          color: '#ffffff',
+          fontSize: 10,
+          x: -4, // 微调使数字居中于 Marker icon
+          y: -26
+        }
+      })
+    }
+  })
+  return markers
+})
+
+// 计算属性：生成带方向箭头的连线 Polyline
+const mapPolylines = computed(() => {
+  if (!currentDay.value) return []
+  const points = currentDay.value.items
+    .filter(item => item.lat && item.lng)
+    .map(item => ({
+      latitude: item.lat!,
+      longitude: item.lng!
+    }))
+    
+  if (points.length < 2) return []
+  return [{
+    points,
+    color: '#0ea5e980', // 半透明浅蓝色
+    width: 6,
+    arrowLine: true, // 启用腾讯地图带方向箭头样式！
+    borderColor: '#0284c7',
+    borderWidth: 1
+  }]
+})
+
+// 监听当前天数或日程项列表的变化，自适应地图镜头中心
+watch([activeDayIndex, () => currentDay.value?.items], () => {
+  if (currentDay.value?.items) {
+    const validItems = currentDay.value.items.filter(item => item.lat && item.lng)
+    if (validItems.length > 0) {
+      const firstValidIdx = currentDay.value.items.findIndex(item => item.lat && item.lng)
+      if (firstValidIdx !== -1) {
+        const firstValidItem = currentDay.value.items[firstValidIdx]
+        mapCenter.value = {
+          latitude: firstValidItem.lat!,
+          longitude: firstValidItem.lng!
+        }
+        activeCardIndex.value = firstValidIdx
+        mapScale.value = 13
+      }
+    }
+  }
+}, { immediate: true, deep: true })
+
+// 🌟 核心联动方法：点击 Marker 时，底部卡片联动滚动，并且直接从下方弹出景点详情半屏抽屉
+function onMarkerTap(e: any) {
+  const markerId = e.detail.markerId
+  activeCardIndex.value = markerId
+  
+  // 地图对齐中心
+  const targetItem = currentDay.value.items[markerId]
+  if (targetItem && targetItem.lat && targetItem.lng) {
+    mapCenter.value = {
+      latitude: targetItem.lat,
+      longitude: targetItem.lng
+    }
+    // 联动触发：直接打开景点详情抽屉弹窗！
+    openItemDetail(targetItem)
+  }
+}
+
+// 🌟 核心联动方法：用户点击底部卡片，地图对焦并弹出气泡
+function focusOnItem(index: number) {
+  activeCardIndex.value = index
+  const targetItem = currentDay.value.items[index]
+  if (targetItem && targetItem.lat && targetItem.lng) {
+    mapCenter.value = {
+      latitude: targetItem.lat,
+      longitude: targetItem.lng
+    }
+    mapScale.value = 14 // 轻微拉近镜头，体验极为高级
+  }
+}
+
+// 🗺️ 腾讯地图原生导航
+function goNavigation(item: any) {
+  if (item.lat && item.lng) {
+    uni.openLocation({
+      latitude: Number(item.lat),
+      longitude: Number(item.lng),
+      name: item.name,
+      address: item.address || '',
+      success: () => {
+        console.log('导航拉起成功')
+      }
+    })
+  }
+}
+
 // 状态映射
 const statusMap: Record<number, { label: string; color: string; bg: string }> = {
   0: { label: '生成中', color: '#64748b', bg: 'rgba(100,116,139,0.2)' },
   1: { label: '未开始', color: '#d97706', bg: 'rgba(217,119,6,0.2)' },
   2: { label: '进行中', color: '#10b981', bg: 'rgba(16,185,129,0.2)' },
-  3: { label: '已完成', color: '#0369a1', bg: 'rgba(3,105,161,0.2)' }
+  3: { label: '已完成', color: '#0369a1', bg: 'rgba(3,105,161,0.2)' },
+  4: { label: '生成失败', color: '#ef4444', bg: 'rgba(239,68,68,0.2)' }
 }
 
 // 行程项类型图标和颜色
@@ -403,7 +554,9 @@ function openAddItem() {
     duration: 120,
     estimatedCost: '',
     description: '',
-    tips: ''
+    tips: '',
+    lat: null,
+    lng: null
   }
   showItemForm.value = true
 }
@@ -421,9 +574,34 @@ function openEditItem(item: any) {
     duration: item.duration || 120,
     estimatedCost: item.estimatedCost !== undefined ? String(item.estimatedCost) : '',
     description: item.description || '',
-    tips: item.tips || ''
+    tips: item.tips || '',
+    lat: item.lat || null,
+    lng: item.lng || null
   }
   showItemForm.value = true
+}
+
+// 🗺️ 原生地图选址并自动回填表单
+function chooseLocationOnMap() {
+  uni.chooseLocation({
+    success: (res) => {
+      if (res.name) {
+        if (!itemForm.value.name) {
+          itemForm.value.name = res.name
+        }
+      }
+      if (res.address) {
+        itemForm.value.address = res.address
+      }
+      itemForm.value.lat = res.latitude
+      itemForm.value.lng = res.longitude
+      
+      uni.showToast({ title: '位置及坐标已成功回填', icon: 'success' })
+    },
+    fail: (err) => {
+      console.log('地图选址失败或取消', err)
+    }
+  })
 }
 
 // 7. 保存行程项
@@ -520,6 +698,26 @@ async function sendAiModifyRequest() {
     }, 150)
   }
 }
+
+function recreatePlan() {
+  if (plan.value) {
+    uni.setStorageSync('prefillPlanData', {
+      destination: plan.value.destination,
+      days: plan.value.days,
+      budget: plan.value.budget,
+      preferences: [] // 默认为空
+    })
+    uni.redirectTo({
+      url: '/pages/plan/create/index'
+    })
+  }
+}
+
+function goBackToList() {
+  uni.switchTab({
+    url: '/pages/plan/list/index'
+  })
+}
 </script>
 
 <template>
@@ -611,6 +809,19 @@ async function sendAiModifyRequest() {
         <text class="gen-sub">可稍后在“我的行程”列表中查看结果...</text>
       </view>
 
+      <!-- AI 规划生成失败友好提示区 -->
+      <view class="generating-box fail-box" v-else-if="plan.status === 4">
+        <text class="fail-warn-icon">⚠️</text>
+        <text class="gen-title fail-title">AI 行程规划未成功完成</text>
+        <view class="fail-reason-card">
+          <text class="fail-reason-text">{{ plan.description || '规划行程时 AI 旅伴可能有些心不在焉，建议您尝试重新生成。' }}</text>
+        </view>
+        <view class="fail-actions">
+          <button class="fail-btn secondary" @click="goBackToList">返回我的行程</button>
+          <button class="fail-btn primary" @click="recreatePlan">重新生成行程</button>
+        </view>
+      </view>
+
       <!-- 异常空数据提示区 (如历史遗留的失败记录) -->
       <view class="generating-box" v-else-if="days.length === 0">
         <text style="font-size: 80rpx; margin-bottom: 20rpx">⚠️</text>
@@ -618,8 +829,8 @@ async function sendAiModifyRequest() {
         <text class="gen-sub">此行程似乎没有生成任何路线内容，建议重新生成</text>
       </view>
 
-      <!-- 当天内容 -->
-      <scroll-view class="scroll-content" scroll-y v-else>
+      <!-- 当天内容 - 列表视图 -->
+      <scroll-view class="scroll-content" scroll-y v-else-if="viewMode === 'list'">
         <template v-if="currentDay">
           <!-- 当日标题 (预览与编辑模式切换) -->
           <view class="day-header" v-if="!isEditing">
@@ -796,6 +1007,69 @@ async function sendAiModifyRequest() {
 
         <view style="height: 180rpx" />
       </scroll-view>
+
+      <!-- 当天内容 - 地图足迹视图 -->
+      <view class="map-view-container" v-else-if="viewMode === 'map' && currentDay">
+        <!-- 微信原生 Map 组件 -->
+        <map
+          id="itineraryMap"
+          class="route-map"
+          :latitude="mapCenter.latitude"
+          :longitude="mapCenter.longitude"
+          :scale="mapScale"
+          :markers="mapMarkers"
+          :polyline="mapPolylines"
+          @markertap="onMarkerTap"
+          show-location
+        />
+
+        <!-- 地图工具栏 (高品质悬浮磨砂玻璃气泡名称开关) -->
+        <view class="map-toolbar">
+          <view 
+            class="toolbar-item" 
+            :class="{ active: showAllCallouts }" 
+            @click="showAllCallouts = !showAllCallouts"
+          >
+            <text class="tool-icon">{{ showAllCallouts ? '👁️' : '🙈' }}</text>
+            <text class="tool-text">{{ showAllCallouts ? '隐藏名称' : '显示名称' }}</text>
+          </view>
+        </view>
+
+        <!-- 底部横向左右滑动卡片滑块 -->
+        <scroll-view 
+          class="map-card-slider" 
+          scroll-x 
+          scroll-with-animation
+          :scroll-into-view="'map-card-' + activeCardIndex"
+        >
+          <view class="slider-inner">
+            <view 
+              v-for="(item, idx) in currentDay.items" 
+              :key="item.id"
+              :id="'map-card-' + idx"
+              class="slider-card"
+              :class="{ active: activeCardIndex === idx }"
+              @click="focusOnItem(idx); openItemDetail(item)"
+            >
+              <view class="card-left">
+                <text class="card-seq">{{ idx + 1 }}</text>
+              </view>
+              <view class="card-right">
+                <view class="card-title-row">
+                  <text class="item-time">{{ item.startTime?.slice(0, 5) || '' }}</text>
+                  <!-- 🗺️ 精致的导航小标签按钮 -->
+                  <view class="nav-mini-btn" v-if="item.lat && item.lng" @click.stop="goNavigation(item)">
+                    🗺️ 导航
+                  </view>
+                </view>
+                <text class="item-name">{{ item.name }}</text>
+                <text class="item-addr" v-if="item.address">{{ item.address }}</text>
+                <text class="item-desc-short" v-if="item.description">{{ item.description }}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
     </template>
 
     <!-- 加载中 -->
@@ -805,7 +1079,7 @@ async function sendAiModifyRequest() {
     </view>
 
     <!-- 底部操作栏 -->
-    <view class="footer" v-if="plan">
+    <view class="footer" v-if="plan && plan.status !== 0 && plan.status !== 4">
       <template v-if="!isEditing">
         <button class="footer-btn secondary" @click="sharePlan">分享行程</button>
         <button class="footer-btn primary" @click="goChat">智能旅伴 / 修改</button>
@@ -849,8 +1123,11 @@ async function sendAiModifyRequest() {
           </view>
 
           <view class="form-item">
-            <text class="form-label">详细地址</text>
-            <input class="form-input" v-model="itemForm.address" placeholder="输入日程地址(可选)" />
+            <view class="form-label-row">
+              <text class="form-label">详细地址</text>
+              <view class="choose-location-btn" @click="chooseLocationOnMap">🗺️ 地图选址</view>
+            </view>
+            <input class="form-input" v-model="itemForm.address" placeholder="选择或输入详细地址(可选)" />
           </view>
 
           <view class="form-row-grid">
@@ -950,6 +1227,97 @@ async function sendAiModifyRequest() {
         <view class="send-btn" :class="{ active: inputMsg.trim() }" @click="sendAiModifyRequest">
           发送
         </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 视图切换毛玻璃悬浮胶囊 -->
+  <view class="view-switch-capsule" v-if="plan && plan.status !== 0 && plan.status !== 4">
+    <view 
+      class="capsule-item" 
+      :class="{ active: viewMode === 'list' }" 
+      @click="viewMode = 'list'"
+    >
+      📋 列表
+    </view>
+    <view 
+      class="capsule-item" 
+      :class="{ active: viewMode === 'map' }" 
+      @click="viewMode = 'map'"
+    >
+      🗺️ 地图
+    </view>
+  </view>
+
+  <!-- 景点详情/游玩建议手写半屏遮罩抽屉 -->
+  <view class="item-detail-mask" :class="{ show: showItemDetailDrawer }" @click="closeItemDetailDrawer" v-if="selectedItemForDetail">
+    <view class="item-detail-container" @click.stop>
+      <!-- 顶部拖动条与标题 -->
+      <view class="drawer-header">
+        <view class="handle-bar" />
+        <text class="drawer-title">🏛️ 景点详情 & AI 建议</text>
+        <text class="drawer-close" @click="closeItemDetailDrawer">✕</text>
+      </view>
+      
+      <!-- 景点详情内容滚动区 -->
+      <scroll-view class="detail-scroll-view" scroll-y>
+        <view class="detail-hero-box">
+          <text class="detail-item-name">{{ selectedItemForDetail.name }}</text>
+          <view class="detail-item-tags">
+            <view class="detail-tag" :style="{ background: getTypeConfig(selectedItemForDetail.type).bg + '20', color: getTypeConfig(selectedItemForDetail.type).bg }">
+              {{ getTypeConfig(selectedItemForDetail.type).icon }} {{ getTypeConfig(selectedItemForDetail.type).label || '行程点' }}
+            </view>
+            <view class="detail-tag cost-tag" v-if="selectedItemForDetail.estimatedCost">
+              💰 ¥{{ selectedItemForDetail.estimatedCost }}/人
+            </view>
+          </view>
+        </view>
+
+        <!-- 基础信息行 -->
+        <view class="detail-info-card">
+          <view class="info-row" v-if="selectedItemForDetail.startTime">
+            <text class="info-icon">🕐</text>
+            <text class="info-label">建议时间：</text>
+            <text class="info-val">{{ selectedItemForDetail.startTime?.slice(0, 5) }} - {{ selectedItemForDetail.endTime?.slice(0, 5) }} ({{ selectedItemForDetail.duration }}分钟)</text>
+          </view>
+          <view class="info-row" v-if="selectedItemForDetail.address" @click="goNavigation(selectedItemForDetail)">
+            <text class="info-icon">📍</text>
+            <text class="info-label">详细地址：</text>
+            <text class="info-val addr-link">{{ selectedItemForDetail.address }} ➔</text>
+          </view>
+        </view>
+
+        <!-- AI 游玩建议 & 亮点 -->
+        <view class="detail-section" v-if="selectedItemForDetail.description">
+          <view class="section-title">
+            <text class="title-spark">✨</text>
+            <text>AI 推荐游玩亮点</text>
+          </view>
+          <view class="section-content description-box">
+            <text>{{ selectedItemForDetail.description }}</text>
+          </view>
+        </view>
+
+        <!-- AI 避坑贴士 -->
+        <view class="detail-section" v-if="selectedItemForDetail.tips">
+          <view class="section-title warning-title">
+            <text class="title-spark">💡</text>
+            <text>AI 独家避坑贴士</text>
+          </view>
+          <view class="section-content tips-box">
+            <text>{{ selectedItemForDetail.tips }}</text>
+          </view>
+        </view>
+        
+        <view style="height: 60rpx;" />
+      </scroll-view>
+      
+      <!-- 底部导航大按钮 -->
+      <view class="drawer-footer-bar">
+        <button class="nav-large-btn" @click="goNavigation(selectedItemForDetail)" :disabled="!selectedItemForDetail.lat || !selectedItemForDetail.lng">
+          <text class="btn-icon">🗺️</text>
+          <text>{{ selectedItemForDetail.lat && selectedItemForDetail.lng ? '唤起手机地图导航' : '暂无空间位置(无法导航)' }}</text>
+        </button>
       </view>
     </view>
   </view>
@@ -2048,5 +2416,544 @@ async function sendAiModifyRequest() {
 @keyframes thinking-dot {
   0%, 100% { transform: scale(0.6); opacity: 0.4; }
   50% { transform: scale(1.2); opacity: 1; }
+}
+
+/* ── 📋 / 🗺️ 视图切换毛玻璃胶囊 ── */
+.view-switch-capsule {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(140rpx + env(safe-area-inset-bottom)); /* 稳稳立在底栏之上 */
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  border: 1rpx solid rgba(226, 232, 240, 0.8);
+  border-radius: 100rpx;
+  display: flex;
+  padding: 6rpx;
+  box-shadow: 0 8rpx 32rpx rgba(15, 23, 42, 0.12);
+  z-index: 999;
+  transition: all 0.3s ease;
+  
+  .capsule-item {
+    padding: 12rpx 36rpx;
+    font-size: 24rpx;
+    font-weight: 700;
+    color: #64748b;
+    border-radius: 100rpx;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+    
+    &.active {
+      background: linear-gradient(135deg, #0ea5e9, #0369a1);
+      color: #fff;
+      box-shadow: 0 4rpx 12rpx rgba(14, 165, 233, 0.3);
+    }
+  }
+}
+
+/* ── 🗺️ 地图轨迹视图容器 ── */
+.map-view-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120rpx); /* 精准扣除头部导航栏高度 */
+  background: #f8fafc;
+  
+  .route-map {
+    width: 100%;
+    height: 65%; /* 地图占上半身 65% 空间 */
+  }
+}
+
+/* ── 底部横向行程滑块 ── */
+.map-card-slider {
+  height: 35%; /* 卡片滑块占下半身 35% 空间 */
+  background: linear-gradient(to bottom, #f8fafc, #f0f9ff);
+  box-sizing: border-box;
+  padding: 20rpx 0;
+  
+  .slider-inner {
+    display: inline-flex;
+    padding: 0 32rpx;
+    gap: 24rpx;
+    height: 100%;
+    box-sizing: border-box;
+    align-items: center;
+  }
+  
+  .slider-card {
+    display: flex;
+    background: #ffffff;
+    border: 2rpx solid rgba(226, 232, 240, 0.8);
+    border-radius: 24rpx;
+    width: 480rpx; /* 固定宽度，支持横向划动 */
+    height: 90%;
+    padding: 24rpx;
+    box-sizing: border-box;
+    box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.03);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    
+    &.active {
+      border-color: #0ea5e9;
+      background: #f0f9ff;
+      box-shadow: 0 10rpx 28rpx rgba(14, 165, 233, 0.15);
+      transform: scale(1.02);
+    }
+    
+    .card-left {
+      width: 60rpx;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      flex-shrink: 0;
+      
+      .card-seq {
+        width: 40rpx; height: 40rpx;
+        border-radius: 50%;
+        background: #0284c7;
+        color: #fff;
+        font-size: 22rpx;
+        font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+      }
+    }
+    
+    .card-right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6rpx;
+      overflow: hidden;
+      
+      .card-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .item-time {
+        font-size: 22rpx;
+        color: #0284c7;
+        font-weight: 700;
+      }
+      
+      .nav-mini-btn {
+        background: linear-gradient(135deg, #38bdf8, #0284c7);
+        color: #fff;
+        font-size: 20rpx;
+        font-weight: 700;
+        padding: 4rpx 16rpx;
+        border-radius: 100rpx;
+        box-shadow: 0 2rpx 8rpx rgba(2, 132, 199, 0.2);
+        transition: all 0.2s;
+        
+        &:active {
+          transform: scale(0.92);
+          opacity: 0.9;
+        }
+      }
+      
+      .item-name {
+        font-size: 28rpx;
+        font-weight: 700;
+        color: #0f172a;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      
+      .item-addr {
+        font-size: 22rpx;
+        color: #64748b;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      
+      .item-desc-short {
+        font-size: 20rpx;
+        color: #94a3b8;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        margin-top: 4rpx;
+      }
+    }
+  }
+}
+
+/* ── 🏛️ 景点详情 & AI 游玩建议半屏抽屉样式 ── */
+.item-detail-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(16px);
+  z-index: 99999;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: flex-end;
+  
+  &.show {
+    opacity: 1;
+    visibility: visible;
+    .item-detail-container {
+      transform: translateY(0);
+    }
+  }
+}
+
+.item-detail-container {
+  width: 100%;
+  height: 75vh;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(30px);
+  border-top-left-radius: 40rpx;
+  border-top-right-radius: 40rpx;
+  box-shadow: 0 -20rpx 60rpx rgba(15, 23, 42, 0.2);
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 32rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.detail-scroll-view {
+  flex: 1;
+  min-height: 0;
+  padding: 12rpx 0;
+}
+
+.detail-hero-box {
+  margin-bottom: 28rpx;
+  
+  .detail-item-name {
+    font-size: 38rpx;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.3;
+    display: block;
+    margin-bottom: 16rpx;
+  }
+  
+  .detail-item-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12rpx;
+  }
+  
+  .detail-tag {
+    font-size: 22rpx;
+    font-weight: 700;
+    padding: 6rpx 20rpx;
+    border-radius: 100rpx;
+    
+    &.cost-tag {
+      background: #f0fdf4;
+      color: #16a34a;
+    }
+  }
+}
+
+.detail-info-card {
+  background: #ffffff;
+  border: 1rpx solid rgba(226, 232, 240, 0.8);
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin-bottom: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.02);
+  
+  .info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12rpx;
+    
+    .info-icon {
+      font-size: 28rpx;
+      line-height: 1.2;
+    }
+    
+    .info-label {
+      font-size: 24rpx;
+      color: #64748b;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    
+    .info-val {
+      font-size: 24rpx;
+      color: #334155;
+      font-weight: 600;
+      line-height: 1.4;
+      
+      &.addr-link {
+        color: #0ea5e9;
+        text-decoration: underline;
+        transition: opacity 0.2s;
+        &:active { opacity: 0.7; }
+      }
+    }
+  }
+}
+
+.detail-section {
+  margin-bottom: 32rpx;
+  
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    margin-bottom: 16rpx;
+    font-size: 28rpx;
+    font-weight: 800;
+    color: #0f172a;
+    
+    .title-spark {
+      font-size: 28rpx;
+      color: #0ea5e9;
+    }
+    
+    &.warning-title {
+      .title-spark {
+        color: #f59e0b;
+      }
+    }
+  }
+  
+  .section-content {
+    font-size: 26rpx;
+    line-height: 1.6;
+    padding: 20rpx 24rpx;
+    border-radius: 20rpx;
+    
+    &.description-box {
+      background: rgba(14, 165, 233, 0.06);
+      color: #334155;
+      border: 1rpx solid rgba(14, 165, 233, 0.1);
+    }
+    
+    &.tips-box {
+      background: #fffbeb;
+      color: #92400e;
+      border: 1rpx solid #fef3c7;
+    }
+  }
+}
+
+.drawer-footer-bar {
+  padding: 20rpx 0;
+  border-top: 1rpx solid rgba(226, 232, 240, 0.6);
+  flex-shrink: 0;
+  
+  .nav-large-btn {
+    width: 100%;
+    height: 96rpx;
+    border-radius: 48rpx;
+    background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+    color: #ffffff;
+    font-size: 30rpx;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12rpx;
+    border: none;
+    box-shadow: 0 8rpx 24rpx rgba(14, 165, 233, 0.35);
+    transition: all 0.2s;
+    
+    &:active {
+      transform: scale(0.98);
+      opacity: 0.92;
+    }
+    
+    &[disabled] {
+      background: #cbd5e1;
+      color: #94a3b8;
+      box-shadow: none;
+      transform: none;
+      opacity: 1;
+    }
+    
+    .btn-icon {
+      font-size: 32rpx;
+    }
+  }
+}
+
+/* ── 🗺️ 新增/修改表单中地图选址后缀按钮 ── */
+.form-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.choose-location-btn {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.08);
+  padding: 4rpx 16rpx;
+  border-radius: 100rpx;
+  transition: all 0.2s;
+  
+  &:active {
+    transform: scale(0.95);
+    background: rgba(14, 165, 233, 0.16);
+  }
+}
+
+/* ── 🗺️ 地图上方的悬浮工具栏 ── */
+.map-toolbar {
+  position: absolute;
+  right: 24rpx;
+  top: 140rpx; /* 避开顶部区域 */
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  z-index: 999;
+  
+  .toolbar-item {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1rpx solid rgba(226, 232, 240, 0.8);
+    border-radius: 100rpx;
+    padding: 12rpx 24rpx;
+    box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.08);
+    transition: all 0.25s ease;
+    
+    &.active {
+      background: linear-gradient(135deg, #0ea5e9, #0369a1);
+      border-color: rgba(14, 165, 233, 0.2);
+      box-shadow: 0 4rpx 16rpx rgba(14, 165, 233, 0.3);
+      
+      .tool-icon, .tool-text {
+        color: #ffffff;
+      }
+    }
+    
+    .tool-icon {
+      font-size: 24rpx;
+      color: #64748b;
+    }
+    
+    .tool-text {
+      font-size: 20rpx;
+      font-weight: 700;
+      color: #64748b;
+    }
+    
+    &:active {
+      transform: scale(0.95);
+    }
+  }
+}
+
+/* ── ⚠️ AI 生成失败高情商卡片排版样式 ── */
+.fail-box {
+  background: linear-gradient(to bottom, #fff5f5, #fffbeb);
+  border-radius: 36rpx;
+  border: 2rpx solid #fee2e2;
+  padding: 80rpx 48rpx !important;
+  margin: 100rpx 48rpx;
+  box-shadow: 0 12rpx 36rpx rgba(239, 68, 68, 0.05);
+  box-sizing: border-box;
+  animation: fail-card-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  
+  .fail-warn-icon {
+    font-size: 100rpx;
+    margin-bottom: 24rpx;
+    display: block;
+    animation: warn-pulse 1.5s infinite alternate ease-in-out;
+  }
+  
+  .fail-title {
+    color: #ef4444 !important;
+    font-size: 36rpx !important;
+    font-weight: 800 !important;
+    letter-spacing: 2rpx;
+  }
+  
+  .fail-reason-card {
+    background: #ffffff;
+    border: 1rpx solid #fee2e2;
+    border-radius: 20rpx;
+    padding: 24rpx;
+    margin: 32rpx 0 48rpx;
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: inset 0 2rpx 6rpx rgba(15, 23, 42, 0.02);
+    
+    .fail-reason-text {
+      font-size: 26rpx;
+      line-height: 1.6;
+      color: #7f1d1d;
+      font-weight: 700;
+      text-align: center;
+      display: block;
+      word-break: break-all;
+    }
+  }
+  
+  .fail-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 20rpx;
+    width: 100%;
+  }
+  
+  .fail-btn {
+    width: 100%;
+    height: 88rpx;
+    border-radius: 44rpx;
+    font-size: 28rpx;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    transition: all 0.2s;
+    
+    &.secondary {
+      background: #f8fafc;
+      border: 1rpx solid #e2e8f0;
+      color: #64748b;
+      
+      &:active {
+        background: #f1f5f9;
+        transform: scale(0.98);
+      }
+    }
+    
+    &.primary {
+      background: linear-gradient(135deg, #ef4444, #f59e0b);
+      color: #ffffff;
+      box-shadow: 0 8rpx 20rpx rgba(239, 68, 68, 0.25);
+      
+      &:active {
+        opacity: 0.9;
+        transform: scale(0.98);
+      }
+    }
+  }
+}
+
+@keyframes fail-card-fade-in {
+  from { opacity: 0; transform: translateY(20rpx) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes warn-pulse {
+  from { transform: scale(0.96); opacity: 0.85; }
+  to { transform: scale(1.06); opacity: 1; }
 }
 </style>

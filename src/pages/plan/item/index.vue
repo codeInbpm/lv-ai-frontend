@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../../components/common/NavBar.vue'
 import { http } from '../../../utils/request'
+import { planApi } from '../../../api/plan'
 
 const item = ref<any>(null)
 const loading = ref(true)
@@ -17,14 +18,29 @@ const checkinForm = ref({
 
 onLoad((options: any) => {
   if (options.id) {
-    // 真实项目中应该通过ID去后端拿详情，这里简单处理，从 storage 获取
     const data = uni.getStorageSync('currentPlanItem')
-    if (data) {
+    // 仅在 Storage 存在且与当前 itemId 完美匹配时才使用缓存
+    if (data && data.id === Number(options.id)) {
       item.value = data
       loading.value = false
+    } else {
+      // 优雅防呆兜底：如果用户是通过分享、扫码进来的（Storage缺失），直接调用后端原子接口拉取！
+      loadItemDetail(Number(options.id))
     }
   }
 })
+
+async function loadItemDetail(itemId: number) {
+  loading.value = true
+  try {
+    const res = await planApi.getPlanItemDetail(itemId)
+    item.value = res
+  } catch (err) {
+    uni.showToast({ title: '加载行程明细失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
 
 function goCheckin() {
   showCheckin.value = true

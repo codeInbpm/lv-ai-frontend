@@ -138,5 +138,9 @@ export const planApi = {
   /** 删除行程的一天 */
   deletePlanDay: (dayId: number) => http.del<void>(`/plan/day/${dayId}`),
   /** AI 对话式增量修改行程细项 */
-  aiPlanModify: (data: AiPlanModifyDTO) => http.post<AiPlanModifyResultVO>('/ai/plan/modify', data)
+  aiPlanModify: (data: AiPlanModifyDTO) => http.post<AiPlanModifyResultVO>('/ai/plan/modify', data),
+  /** 安全拉取腾讯地图开发者Key */
+  getMapKey: () => http.get<string>('/map/key'),
+  /** 原子拉取行程明细项详情 */
+  getPlanItemDetail: (itemId: number) => http.get<TravelItem>(`/plan/item/${itemId}`)
 }

@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { usePlanStore } from '../../../stores/plan'
 import { useUserStore } from '../../../stores/user'
-import type { TravelPlan } from '../../../api/plan'
+import { planApi, type TravelPlan } from '../../../api/plan'
 import NavBar from '../../../components/common/NavBar.vue'
 
 const planStore = usePlanStore()
@@ -82,10 +82,19 @@ async function deletePlan(planId: number) {
     content: '删除后不可恢复，确定删除此行程？',
     async success(res) {
       if (res.confirm) {
-        const { planApi } = await import('../../../api/plan')
-        await planApi.deletePlan(planId)
-        plans.value = plans.value.filter(p => p.id !== planId)
-        uni.showToast({ title: '已删除', icon: 'success' })
+        uni.showLoading({ title: '正在删除...', mask: true })
+        try {
+          await planApi.deletePlan(planId)
+          plans.value = plans.value.filter(p => p.id !== planId)
+          uni.showToast({ title: '已删除', icon: 'success' })
+        } catch (err: any) {
+          uni.showToast({
+            title: err?.data?.message || '删除失败，请重试',
+            icon: 'none'
+          })
+        } finally {
+          uni.hideLoading()
+        }
       }
     }
   })
