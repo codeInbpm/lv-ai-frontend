@@ -50,7 +50,7 @@ const generatePlan = () => {
 
 <template>
   <view class="detail-page">
-    <NavBar title="灵感详情" />
+    <NavBar title="灵感详情" back />
     
     <view v-if="loading" class="loading">加载中...</view>
     

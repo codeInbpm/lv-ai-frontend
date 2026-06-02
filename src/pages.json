@@ -217,6 +217,20 @@
         "navigationBarTitleText": "点亮足迹",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/search/index",
+      "style": {
+        "navigationBarTitleText": "搜索",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/ranking/detail",
+      "style": {
+        "navigationBarTitleText": "榜单详情",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "tabBar": {

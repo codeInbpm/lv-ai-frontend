@@ -66,6 +66,10 @@ function goInspirationDetail(id: number) {
   uni.navigateTo({ url: `/pages/world/inspiration-detail?id=${id}` })
 }
 
+function goToSearch() {
+  uni.navigateTo({ url: '/pages/search/index' })
+}
+
 // 一键生成攻略
 function generatePlan(item: any) {
   uni.showLoading({ title: '加载偏好中...', mask: true })
@@ -138,9 +142,10 @@ const swiperPages = computed(() => {
 
       <!-- 搜索栏 -->
       <view class="search-section">
-        <view class="search-bar">
+        <view class="search-bar" @click="goToSearch">
           <text class="search-icon">🔍</text>
           <input 
+            disabled
             v-model="searchQuery" 
             placeholder="搜索目的地、景点或美食" 
             placeholder-class="ph-style"
