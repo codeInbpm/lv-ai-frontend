@@ -58,6 +58,13 @@
       }
     },
     {
+      "path": "pages/plan/route/index",
+      "style": {
+        "navigationBarTitleText": "路线详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/world/index",
       "style": {
         "navigationBarTitleText": "看世界",

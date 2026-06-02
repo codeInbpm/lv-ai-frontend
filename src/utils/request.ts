@@ -1,11 +1,9 @@
-import { useUserStore } from '../stores/user'
 
 const BASE_URL = 'http://localhost:8080/api'
 // const BASE_URL = 'http://192.168.110.55:8080/api'
 
 /** 防止多个请求同时 401 导致多次跳转登录页 */
 let isRedirectingToLogin = false
-
 
 interface RequestOptions {
   url: string
@@ -34,7 +32,6 @@ function cleanParams(data: any): any {
 
 export function request<T = any>(options: RequestOptions): Promise<T> {
   const { url, method = 'GET', data, showLoading = false } = options
-  const userStore = useUserStore()
 
   if (showLoading) {
     uni.showLoading({ title: '加载中...', mask: true })
@@ -51,7 +48,7 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
       timeout: options.timeout || 60000,
       header: {
         'Content-Type': 'application/json',
-        Authorization: userStore.token || ''
+        Authorization: uni.getStorageSync('token') || ''
       },
       success(res: any) {
         if (showLoading) uni.hideLoading()
@@ -61,7 +58,7 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
         } else if (result.code === 401) {
           if (!isRedirectingToLogin) {
             isRedirectingToLogin = true
-            userStore.logout()
+            uni.removeStorageSync('token')
             uni.navigateTo({
               url: '/pages/login/index',
               complete() {

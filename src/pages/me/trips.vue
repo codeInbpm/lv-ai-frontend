@@ -45,7 +45,7 @@ function onTabChange(val: number) {
 }
 
 function goDetail(id: number) {
-  uni.navigateTo({ url: `/pages/plan/detail/index?id=${id}` })
+  uni.navigateTo({ url: `/pages/plan/detail/index?planId=${id}` })
 }
 
 function goCreate() {

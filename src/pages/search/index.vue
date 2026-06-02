@@ -78,7 +78,7 @@ const goDetail = (type: string, id: number) => {
   const urlMap: Record<string, string> = {
     ranking: `/pages/ranking/detail?id=${id}`,
     note: `/pages/note/detail?id=${id}`,
-    plan: `/pages/plan/detail/index?id=${id}`
+    plan: `/pages/plan/route/index?planId=${id}`
   }
   if (urlMap[type]) {
     uni.navigateTo({ url: urlMap[type] })
