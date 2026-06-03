@@ -46,6 +46,21 @@ function goCheckin() {
   showCheckin.value = true
 }
 
+function formatCurrentTime() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${day} ${h}:${min}`
+}
+
+function formatRecordTime(timeStr?: string) {
+  if (!timeStr) return ''
+  return timeStr.replace('T', ' ').slice(0, 16)
+}
+
 async function submitCheckin() {
   if (!checkinForm.value.content && !checkinForm.value.cost) {
     return uni.showToast({ title: '写点什么或记录下花销吧', icon: 'none' })
@@ -67,6 +82,12 @@ async function submitCheckin() {
     
     // 更新本地状态
     item.value.checkedIn = 1
+    item.value.checkinRecord = {
+      content: checkinForm.value.content,
+      cost: checkinForm.value.cost ? Number(checkinForm.value.cost) : 0,
+      images: [...checkinForm.value.images],
+      createTime: formatCurrentTime()
+    }
     // 可触发上一个页面刷新
     uni.$emit('refreshPlanDetail')
   } catch (e) {
@@ -87,6 +108,10 @@ function uploadImage() {
       }, 1000)
     }
   })
+}
+
+function previewImage(urls: string[], index: number) {
+  uni.previewImage({ urls, current: index })
 }
 </script>
 
@@ -127,7 +152,27 @@ function uploadImage() {
       <!-- 打卡状态区 -->
       <view class="checkin-status" v-if="item.checkedIn">
         <text class="status-title">🎉 已完成打卡！</text>
-        <text class="status-desc">你已经记录了这里的足迹，可以在行程中查看历史回顾。</text>
+        
+        <view class="record-detail" v-if="item.checkinRecord && (item.checkinRecord.content || item.checkinRecord.cost > 0 || (item.checkinRecord.images && item.checkinRecord.images.length > 0))">
+          <view class="record-header">
+            <text class="record-time" v-if="item.checkinRecord.createTime">🕒 {{ formatRecordTime(item.checkinRecord.createTime) }}</text>
+            <view class="record-cost" v-if="item.checkinRecord.cost > 0">
+              <text>💰 ¥{{ item.checkinRecord.cost }}</text>
+            </view>
+          </view>
+          <text class="record-content" v-if="item.checkinRecord.content">{{ item.checkinRecord.content }}</text>
+          <view class="record-images" v-if="item.checkinRecord.images && item.checkinRecord.images.length > 0">
+            <image 
+              v-for="(img, idx) in item.checkinRecord.images" 
+              :key="idx" 
+              :src="img" 
+              mode="aspectFill" 
+              class="record-img"
+              @click="previewImage(item.checkinRecord.images, idx)"
+            />
+          </view>
+        </view>
+        <text class="status-desc" v-else>你已经记录了这里的足迹，可以在行程中查看历史回顾。</text>
       </view>
     </view>
 
@@ -236,6 +281,20 @@ function uploadImage() {
 }
 .status-title { display: block; font-size: 32rpx; color: #a21caf; font-weight: bold; margin-bottom: 12rpx; }
 .status-desc { font-size: 26rpx; color: #c026d3; }
+
+.record-detail {
+  margin-top: 24rpx;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 24rpx;
+  border-radius: 16rpx;
+}
+.record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16rpx; }
+.record-time { font-size: 24rpx; color: #64748b; }
+.record-cost { font-size: 28rpx; color: #ef4444; font-weight: bold; }
+.record-content { font-size: 28rpx; color: #475569; display: block; margin-bottom: 16rpx; line-height: 1.5; }
+.record-images { display: flex; gap: 16rpx; flex-wrap: wrap; }
+.record-img { width: 160rpx; height: 160rpx; border-radius: 12rpx; }
 
 .bottom-bar {
   position: fixed;

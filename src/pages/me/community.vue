@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import NavBar from '../../components/common/NavBar.vue'
 import { useUserStore } from '../../stores/user'
 import { communityApi, type CommunityStats } from '../../api/community'
@@ -17,8 +17,23 @@ const loading = ref(false)
 
 onMounted(async () => {
   fetchStats()
-  fetchTabData(0) // Load initial tab data
+  fetchTabData(activeTab.value) // Load current tab data
+  
+  // 注册全局刷新监听，在发布页面成功提交后触发刷新
+  uni.$on('refreshCommunityData', handleRefresh)
 })
+
+onUnmounted(() => {
+  uni.$off('refreshCommunityData', handleRefresh)
+})
+
+function handleRefresh() {
+  fetchStats()
+  fetchTabData(activeTab.value)
+  if (activeTab.value === 2) {
+    fetchCreationData(activeCreationTab.value)
+  }
+}
 
 // 监听 Tab 切换
 watch(activeTab, (newVal) => {
@@ -45,7 +60,8 @@ async function fetchTabData(tabIndex: number) {
           browsingHistory.value = []
         }
       }
-      // 创作中心 - 默认加载笔记
+    } else if (tabIndex === 2) {
+      // 创作中心 - 加载当前子tab内容
       fetchCreationData(activeCreationTab.value)
     } else if (tabIndex === 3) {
       drafts.value = await communityApi.getDrafts() || []
@@ -63,16 +79,22 @@ watch(activeCreationTab, (newVal) => {
 })
 
 async function fetchCreationData(tabIndex: number) {
-  if (tabIndex === 0) {
-    try {
-      const res = await uni.request({
-        url: 'http://localhost:8080/api/note/list',
-        header: { Authorization: userStore.token }
-      })
-      const data = res.data as any
-      myNotes.value = data.data.records || []
-    } catch (e) {}
+  let noteType = 'note'
+  if (tabIndex === 1) {
+    noteType = 'guide'
+  } else if (tabIndex === 2) {
+    noteType = 'travel'
   }
+  
+  try {
+    const res = await uni.request({
+      url: `http://localhost:8080/api/note/list?type=${noteType}`,
+      header: { Authorization: userStore.token }
+    })
+    const data = res.data as any
+    // 根据后端返回的数据更新当前对应的列表，我们这里可以使用 myNotes 通用展示
+    myNotes.value = data.data.records || []
+  } catch (e) {}
 }
 
 function goNoteDetail(id: number) {
@@ -80,11 +102,28 @@ function goNoteDetail(id: number) {
 }
 
 function goDraftDetail(item: any) {
-  uni.navigateTo({ url: `/pages/note/publish?draftId=${item.id}` })
+  if (item.draftType === 2) {
+    uni.navigateTo({ url: `/pages/note/publish-guide?draftId=${item.id}` })
+  } else if (item.draftType === 3) {
+    uni.navigateTo({ url: `/pages/note/publish-travel?draftId=${item.id}` })
+  } else {
+    uni.navigateTo({ url: `/pages/note/publish?draftId=${item.id}` })
+  }
 }
 
 function goPublish() {
-  uni.navigateTo({ url: '/pages/note/publish' })
+  uni.showActionSheet({
+    itemList: ['发布笔记', '发布攻略', '发布游记'],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        uni.navigateTo({ url: '/pages/note/publish' })
+      } else if (res.tapIndex === 1) {
+        uni.navigateTo({ url: '/pages/note/publish-guide' })
+      } else if (res.tapIndex === 2) {
+        uni.navigateTo({ url: '/pages/note/publish-travel' })
+      }
+    }
+  })
 }
 
 function deleteNote(item: any) {

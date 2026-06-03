@@ -1,4 +1,10 @@
 {
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^wd-(.*)": "wot-design-uni/components/wd-$1/wd-$1.vue"
+    }
+  },
   "pages": [
     {
       "path": "pages/index/index",
@@ -166,6 +172,20 @@
       "path": "pages/note/publish",
       "style": {
         "navigationBarTitleText": "发布笔记",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/note/publish-guide",
+      "style": {
+        "navigationBarTitleText": "发布攻略",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/note/publish-travel",
+      "style": {
+        "navigationBarTitleText": "发布游记",
         "navigationStyle": "custom"
       }
     },

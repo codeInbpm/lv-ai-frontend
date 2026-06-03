@@ -8,6 +8,19 @@ const planStore = usePlanStore()
 const loading = ref(false)
 const submitLoading = ref(false)
 
+const showDrivingModal = ref(false)
+const drivingForm = reactive({
+  policy: 'REAL_TRAFFIC',
+  plateNumber: ''
+})
+const drivingPolicies = [
+  { label: '智能推荐(路况)', value: 'REAL_TRAFFIC' },
+  { label: '时间优先', value: 'LEAST_TIME' },
+  { label: '少收费', value: 'LEAST_FEE' },
+  { label: '不走高速', value: 'AVOID_HIGHWAY' },
+  { label: '高速优先', value: 'PRIORITY_HIGHWAY' }
+]
+
 const form = reactive({
   departure: '',
   departureLng: undefined as number | undefined,
@@ -24,16 +37,16 @@ const form = reactive({
 })
 
 const preferenceOptions = [
-  { label: '🍜 美食', value: '美食' },
-  { label: '📷 摄影', value: '摄影' },
-  { label: '👨‍👩‍👧 亲子', value: '亲子' },
-  { label: '💑 情侣', value: '情侣' },
-  { label: '🚗 自驾', value: '自驾' },
-  { label: '🏕️ 户外', value: '户外' },
-  { label: '🎨 文艺', value: '文艺' },
-  { label: '🛍️ 购物', value: '购物' },
-  { label: '🏛️ 历史', value: '历史' },
-  { label: '🌊 海岛', value: '海岛' }
+  { id: 'food', label: '🍜 美食', value: '美食' },
+  { id: 'photo', label: '📷 摄影', value: '摄影' },
+  { id: 'family', label: '👨‍👩‍👧 亲子', value: '亲子' },
+  { id: 'couple', label: '💑 情侣', value: '情侣' },
+  { id: 'driving', label: '🚗 自驾', value: '自驾' },
+  { id: 'outdoor', label: '🏕️ 户外', value: '户外' },
+  { id: 'art', label: '🎨 文艺', value: '文艺' },
+  { id: 'shopping', label: '🛍️ 购物', value: '购物' },
+  { id: 'history', label: '🏛️ 历史', value: '历史' },
+  { id: 'island', label: '🌊 海岛', value: '海岛' }
 ]
 
 
@@ -123,13 +136,35 @@ function chooseLocation(type: 'departure' | 'destination') {
   })
 }
 
-function togglePreference(item: string) {
-  const index = form.preferences.indexOf(item)
+function togglePreference(id: string, value: string) {
+  console.log('togglePreference id:', id, 'value:', value)
+  if (id === 'driving') {
+    showDrivingModal.value = true
+    return
+  }
+  const index = form.preferences.indexOf(value)
   if (index > -1) {
     form.preferences.splice(index, 1)
   } else {
-    form.preferences.push(item)
+    form.preferences.push(value)
   }
+}
+
+function confirmDrivingPref() {
+  const drivingVal = preferenceOptions.find(o => o.id === 'driving')?.value || '自驾'
+  if (!form.preferences.includes(drivingVal)) {
+    form.preferences.push(drivingVal)
+  }
+  showDrivingModal.value = false
+}
+
+function removeDrivingPref() {
+  const drivingVal = preferenceOptions.find(o => o.id === 'driving')?.value || '自驾'
+  const index = form.preferences.indexOf(drivingVal)
+  if (index > -1) {
+    form.preferences.splice(index, 1)
+  }
+  showDrivingModal.value = false
 }
 
 async function handleSubmit() {
@@ -144,13 +179,19 @@ async function handleSubmit() {
   try {
     const result = await planStore.createPlan({
       departure: form.departure,
+      departureLng: form.departureLng,
+      departureLat: form.departureLat,
       destination: form.destination,
+      destinationLng: form.destinationLng,
+      destinationLat: form.destinationLat,
       startDate: form.startDate,
       days: form.days,
       budget: form.budget,
       peopleCount: form.peopleCount,
       preferences: form.preferences,
-      extraNote: form.extraNote
+      extraNote: form.extraNote,
+      drivingPolicy: form.preferences.includes('自驾') ? drivingForm.policy : undefined,
+      plateNumber: form.preferences.includes('自驾') ? drivingForm.plateNumber : undefined
     })
 
     uni.hideLoading()
@@ -259,11 +300,12 @@ async function handleSubmit() {
                 class="tag"
                 :class="{ active: form.preferences.includes(opt.value) }"
                 v-for="opt in preferenceOptions"
-                :key="opt.value"
-                @click="togglePreference(opt.value)"
+                :key="opt.id"
+                @click="togglePreference(opt.id, opt.value)"
             >
               {{ opt.label }}
-            </view>          </view>
+            </view>
+          </view>
         </view>
       </view>
 
@@ -278,6 +320,37 @@ async function handleSubmit() {
 
       <view class="submit-btn" @click="handleSubmit">
         <text>✨ 开始 AI 智能规划</text>
+      </view>
+    </view>
+
+    <!-- 自驾偏好弹窗 -->
+    <view class="modal-mask" v-if="showDrivingModal" @click="removeDrivingPref">
+      <view class="modal-content" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">🚗 自驾路线偏好设置</text>
+        </view>
+        <view class="modal-body">
+          <view class="pref-item">
+            <text class="pref-label">路线策略</text>
+            <view class="policy-list">
+              <view 
+                class="policy-tag"
+                :class="{ active: drivingForm.policy === p.value }"
+                v-for="p in drivingPolicies"
+                :key="p.value"
+                @click="drivingForm.policy = p.value"
+              >{{ p.label }}</view>
+            </view>
+          </view>
+          <view class="pref-item">
+            <text class="pref-label">车牌号 (选填，用于规避限行)</text>
+            <input class="plate-input" v-model="drivingForm.plateNumber" placeholder="例如：粤B12345" />
+          </view>
+        </view>
+        <view class="modal-footer">
+          <view class="btn cancel" @click="removeDrivingPref">取消选择</view>
+          <view class="btn confirm" @click="confirmDrivingPref">确定加入自驾</view>
+        </view>
       </view>
     </view>
   </view>
@@ -374,8 +447,9 @@ async function handleSubmit() {
   font-size: 26rpx;
   padding: 16rpx 28rpx;
   border-radius: 16rpx;
-  border: 1rpx solid #f1f5f9;
-  transition: all 0.2s;
+  border: 2rpx solid #f1f5f9;
+  box-sizing: border-box;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -384,8 +458,7 @@ async function handleSubmit() {
   background: #e0f2fe;
   color: #0369a1;
   border-color: #0ea5e9;
-  font-weight: 600;
-  transform: translateY(-2rpx);
+  font-weight: normal !important;
   box-shadow: 0 4rpx 12rpx rgba(14, 165, 233, 0.15);
 }
 
@@ -408,5 +481,83 @@ async function handleSubmit() {
   font-size: 32rpx; font-weight: 700;
   box-shadow: 0 8rpx 24rpx rgba(14,165,233,0.3);
   margin-top: 48rpx;
+}
+
+/* 弹窗样式 */
+.modal-mask {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(20rpx);
+  z-index: 99999;
+}
+.modal-content {
+  position: absolute; bottom: 0; left: 0; width: 100%;
+  background: #ffffff;
+  border-radius: 40rpx 40rpx 0 0;
+  overflow: hidden;
+  box-shadow: 0 -16rpx 48rpx rgba(15, 23, 42, 0.15);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: slideUp 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.8);
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.modal-header {
+  padding: 36rpx 30rpx; text-align: center; border-bottom: 1rpx solid #f1f5f9;
+}
+.modal-title {
+  font-size: 34rpx; font-weight: 700; color: #0f172a;
+}
+.modal-body { padding: 40rpx 32rpx; }
+.pref-item { margin-bottom: 40rpx; }
+.pref-label {
+  font-size: 28rpx; font-weight: 600; color: #334155; margin-bottom: 20rpx; display: block;
+}
+.policy-list {
+  display: flex; flex-wrap: wrap; gap: 16rpx;
+}
+.policy-tag {
+  padding: 16rpx 28rpx; background: #f8fafc; color: #64748b;
+  font-size: 26rpx; border-radius: 16rpx; border: 2rpx solid #f1f5f9;
+  transition: all 0.2s ease;
+}
+.policy-tag.active {
+  background: #e0f2fe; color: #0369a1; border-color: #0ea5e9;
+  font-weight: 600;
+  box-shadow: 0 4rpx 12rpx rgba(14, 165, 233, 0.1);
+}
+.plate-input {
+  background: #f8fafc; padding: 24rpx; border-radius: 16rpx;
+  font-size: 28rpx; border: 2rpx solid #e2e8f0; width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+.plate-input:focus {
+  border-color: #0ea5e9;
+  background: #ffffff;
+  box-shadow: 0 0 0 4rpx rgba(14, 165, 233, 0.1);
+}
+.modal-footer {
+  display: flex; border-top: 1rpx solid #f1f5f9;
+  background: #f8fafc;
+}
+.btn { 
+  flex: 1; text-align: center; padding: 32rpx 0; font-size: 30rpx; 
+  transition: background-color 0.2s;
+}
+.btn.cancel { 
+  color: #64748b; border-right: 1rpx solid #f1f5f9; 
+}
+.btn.cancel:active {
+  background-color: #f1f5f9;
+}
+.btn.confirm { 
+  color: #0ea5e9; font-weight: 700; 
+}
+.btn.confirm:active {
+  background-color: #e0f2fe;
 }
 </style>

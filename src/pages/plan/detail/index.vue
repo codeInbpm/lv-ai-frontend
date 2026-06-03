@@ -298,6 +298,17 @@ function formatCost(cost?: number) {
   return `¥${cost.toLocaleString()}`
 }
 
+// 格式化打卡时间
+function formatRecordTime(timeStr?: string) {
+  if (!timeStr) return ''
+  return timeStr.replace('T', ' ').slice(0, 16)
+}
+
+// 预览图片
+function previewImage(urls: string[], index: number) {
+  uni.previewImage({ urls, current: index })
+}
+
 // 打卡
 async function checkIn(item: TravelItem) {
   if (item.checkedIn) return
@@ -306,11 +317,26 @@ async function checkIn(item: TravelItem) {
     content: `确认在「${item.name}」打卡吗？`,
     success: async (res) => {
       if (res.confirm) {
+        uni.showLoading({ title: '打卡中...' })
         try {
-          // 打卡动作
+          // 发起真实的打卡请求
+          await http.post('/plan/checkin', {
+            planId: planId.value,
+            dayId: currentDay.value.day.id,
+            itemId: item.id,
+            content: '',
+            cost: 0,
+            images: []
+          })
+          
           item.checkedIn = 1
+          uni.hideLoading()
           uni.showToast({ title: '打卡成功！', icon: 'success' })
+          
+          // 可触发外层相关依赖刷新
+          await loadData()
         } catch {
+          uni.hideLoading()
           uni.showToast({ title: '打卡失败', icon: 'none' })
         }
       }
@@ -969,9 +995,19 @@ function goBackToList() {
                       <text class="record-title">📸 我的打卡足迹</text>
                       <text class="record-cost" v-if="item.checkinRecord.cost > 0">花费: ¥{{ item.checkinRecord.cost }}</text>
                     </view>
+                    <view class="record-time-row" v-if="item.checkinRecord.createTime">
+                      <text class="record-time">🕒 {{ formatRecordTime(item.checkinRecord.createTime) }}</text>
+                    </view>
                     <text class="record-content" v-if="item.checkinRecord.content">{{ item.checkinRecord.content }}</text>
                     <view class="record-images" v-if="item.checkinRecord.images && item.checkinRecord.images.length > 0">
-                      <image v-for="(img, imgIdx) in item.checkinRecord.images" :key="imgIdx" :src="img" mode="aspectFill" class="r-img" />
+                      <image 
+                        v-for="(img, imgIdx) in item.checkinRecord.images" 
+                        :key="imgIdx" 
+                        :src="img" 
+                        mode="aspectFill" 
+                        class="r-img" 
+                        @click.stop="previewImage(item.checkinRecord.images, imgIdx)"
+                      />
                     </view>
                   </view>
                 </view>
@@ -1757,6 +1793,13 @@ function goBackToList() {
   font-size: 26rpx;
   font-weight: 600;
   color: #0369a1;
+}
+.record-time-row {
+  margin-bottom: 8rpx;
+}
+.record-time {
+  font-size: 22rpx;
+  color: #94a3b8;
 }
 .record-cost {
   font-size: 24rpx;
