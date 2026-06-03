@@ -13,6 +13,8 @@ export interface CreatePlanDTO {
   peopleCount?: number
   preferences?: string[]
   extraNote?: string
+  drivingPolicy?: string
+  plateNumber?: string
 }
 
 export interface TravelItem {
