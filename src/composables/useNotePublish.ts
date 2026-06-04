@@ -300,7 +300,7 @@ export const useNotePublishStore = defineStore('notePublish', () => {
         if (!season.value) {
           return '请选择最佳出游时间'
         }
-        if (!guideData.value.overview.trim()) {
+        if (!content.value.trim()) {
           return '请输入目的地概况'
         }
         // 校验景点卡片

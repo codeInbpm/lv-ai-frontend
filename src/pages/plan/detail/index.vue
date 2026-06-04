@@ -1269,7 +1269,7 @@ function goBackToList() {
   </view>
 
   <!-- 视图切换毛玻璃悬浮胶囊 -->
-  <view class="view-switch-capsule" v-if="plan && plan.status !== 0 && plan.status !== 4">
+  <view class="view-switch-capsule" v-if="plan && plan.status !== 0 && plan.status !== 4 && !isEditing">
     <view 
       class="capsule-item" 
       :class="{ active: viewMode === 'list' }" 
