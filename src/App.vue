@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
 import { useUserStore } from './stores/user'
+import { useDictStore } from './stores/dict'
 
 onLaunch(() => {
   // 注册微信隐私授权回调
@@ -12,6 +13,10 @@ onLaunch(() => {
 
   const userStore = useUserStore()
   userStore.initUser()
+
+  // 预加载全局高频常用字典数据
+  const dictStore = useDictStore()
+  dictStore.loadDicts(['weather', 'mood', 'interest_preference', 'self_drive_preference', 'car_type'])
 })
 
 onShow(() => {})

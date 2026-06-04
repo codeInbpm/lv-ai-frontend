@@ -381,7 +381,11 @@ export const useNotePublishStore = defineStore('notePublish', () => {
       id: id.value,
       draftId: draftId.value,
       title: title.value || '无标题草稿',
-      content: content.value || '',
+      content: type.value === 'guide'
+        ? (content.value || guideData.value.overview || '旅行攻略')
+        : (type.value === 'travel' 
+            ? (travelData.value.summary || travelData.value.daysList[0]?.content || '旅行日志')
+            : (content.value || '')),
       coverUrl: calculatedCover || '',
       images: type.value === 'travel' 
         ? JSON.stringify(travelData.value.daysList.flatMap(d => d.images || [])) // 汇总游记所有图片

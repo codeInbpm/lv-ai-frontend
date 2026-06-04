@@ -67,6 +67,14 @@ async function submit() {
   } catch (e) {}
 }
 
+function addTopic(topicName: string) {
+  if (!store.selectedTopics.includes(topicName)) {
+    store.selectedTopics.push(topicName)
+  }
+}
+
+defineExpose({ addTopic })
+
 async function saveDraft() {
   syncCoverAndForm()
   try {

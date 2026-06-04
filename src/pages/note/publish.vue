@@ -136,6 +136,7 @@ async function submit() {
       longitude: location.value?.longitude,
       latitude: location.value?.latitude,
       topicTags: selectedTopics.value.join(','),
+      type: 'note',
       status: 1
     })
     uni.hideLoading()

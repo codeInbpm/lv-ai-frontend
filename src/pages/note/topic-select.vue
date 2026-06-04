@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { http } from '../../utils/request'
+import NavBar from '../../components/common/NavBar.vue'
 
 const categories = ref<any[]>([])
 const activeCategoryId = ref(0)
@@ -50,6 +51,7 @@ onMounted(() => {
 
 <template>
   <view class="topic-select">
+    <NavBar fixed back title="选择话题" textColor="#333" background="#fff" />
     <view class="search-bar">
       <view class="search-input-box">
         <text class="search-icon">🔍</text>

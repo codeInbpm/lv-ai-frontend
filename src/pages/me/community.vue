@@ -15,12 +15,25 @@ const myNotes = ref<any[]>([])
 const drafts = ref<any[]>([])
 const loading = ref(false)
 
+const btnX = ref(300)
+const btnY = ref(550)
+
 onMounted(async () => {
   fetchStats()
   fetchTabData(activeTab.value) // Load current tab data
   
   // 注册全局刷新监听，在发布页面成功提交后触发刷新
   uni.$on('refreshCommunityData', handleRefresh)
+
+  // 初始化悬浮发布按钮的初始位置
+  try {
+    const sysInfo = uni.getSystemInfoSync()
+    btnX.value = sysInfo.windowWidth - 75 // 贴右侧边缘
+    btnY.value = sysInfo.windowHeight - 160 // 避开底部安全区
+  } catch (e) {
+    btnX.value = 300
+    btnY.value = 550
+  }
 })
 
 onUnmounted(() => {
@@ -329,7 +342,7 @@ async function removeCollection(item: any) {
           </view>
           <view class="empty-state camel-state" v-else>
             <view class="empty-illustration">
-              <text class="emoji-img">🐪</text>
+              <text class="emoji-img">🐸</text>
             </view>
             <text class="empty-text">还没有留下浏览足迹</text>
           </view>
@@ -362,13 +375,11 @@ async function removeCollection(item: any) {
                 </view>
               </view>
             </view>
-            <view class="publish-btn-wrap">
-              <button class="publish-btn" @click="goPublish">发布笔记</button>
-            </view>
+
             <!-- 笔记空状态 (保留骆驼插图) -->
             <view class="empty-state camel-state" v-if="myNotes.length === 0">
               <view class="empty-illustration">
-                <text class="emoji-img">🐪</text>
+                <text class="emoji-img">🐸</text>
               </view>
               <text class="empty-text">还没有笔记，快来发布笔记参与话题讨论吧~</text>
             </view>
@@ -402,6 +413,27 @@ async function removeCollection(item: any) {
         </view>
       </scroll-view>
     </view>
+
+    <!-- 可拖拽悬浮发布按钮 -->
+    <movable-area class="movable-area">
+      <movable-view 
+        class="movable-view" 
+        direction="all" 
+        :x="btnX" 
+        :y="btnY" 
+        inertia
+        out-of-bounds
+        @tap="goPublish"
+      >
+        <view class="fancy-publish-btn">
+          <text class="btn-logo">🐸</text>
+          <text class="btn-label">发布</text>
+          <view class="plus-badge">
+            <text class="plus-icon">+</text>
+          </view>
+        </view>
+      </movable-view>
+    </movable-area>
   </view>
 </template>
 
@@ -893,5 +925,92 @@ async function removeCollection(item: any) {
   text-overflow: ellipsis;
   overflow: hidden;
   margin-right: 20rpx;
+}
+
+.movable-area {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.movable-view {
+  width: 110rpx;
+  height: 110rpx;
+  pointer-events: auto;
+  border-radius: 50%;
+}
+
+.fancy-publish-btn {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #6366f1 100%);
+  box-shadow: 0 12rpx 36rpx rgba(14, 165, 233, 0.45);
+  border: 2rpx solid rgba(255, 255, 255, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  animation: floatPulse 3s ease-in-out infinite;
+  backdrop-filter: blur(10px);
+}
+
+.btn-logo {
+  font-size: 40rpx;
+  line-height: 1;
+  margin-bottom: 2rpx;
+  text-shadow: 0 2rpx 4rpx rgba(0,0,0,0.1);
+}
+
+.btn-label {
+  font-size: 18rpx;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  text-shadow: 0 2rpx 4rpx rgba(0,0,0,0.1);
+  transform: scale(0.9);
+}
+
+.plus-badge {
+  position: absolute;
+  top: -4rpx;
+  right: -4rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: 2rpx solid #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 10rpx rgba(245, 158, 11, 0.4);
+  
+  .plus-icon {
+    color: #ffffff;
+    font-size: 22rpx;
+    font-weight: bold;
+    line-height: 1;
+    transform: translateY(-2rpx);
+  }
+}
+
+@keyframes floatPulse {
+  0% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 12rpx 36rpx rgba(14, 165, 233, 0.45);
+  }
+  50% {
+    transform: translateY(-6rpx) scale(1.03);
+    box-shadow: 0 20rpx 44rpx rgba(14, 165, 233, 0.6);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 12rpx 36rpx rgba(14, 165, 233, 0.45);
+  }
 }
 </style>

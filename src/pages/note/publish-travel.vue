@@ -5,8 +5,10 @@ import { commonApi } from '../../api/common'
 import { useNavBar } from '../../composables/useNavBar'
 import { http } from '../../utils/request'
 import { useNotePublishStore } from '../../composables/useNotePublish'
+import { useDictStore } from '../../stores/dict'
 
 const store = useNotePublishStore()
+const dictStore = useDictStore()
 const { statusBarHeight, navBarHeight, totalHeight } = useNavBar()
 
 const currentDraftId = ref<number | null>(null)
@@ -14,6 +16,9 @@ const companionsColumns = ref(['独自一人', '情侣夫妻', '家庭亲子', '
 
 onLoad(async (options: any) => {
   store.resetForm('travel')
+  
+  // 预先确保天气和心情字典已加载
+  dictStore.loadDicts(['weather', 'mood'])
   
   if (options && options.draftId) {
     currentDraftId.value = Number(options.draftId)
@@ -53,6 +58,85 @@ async function submit() {
     uni.$emit('refreshCommunityData')
     setTimeout(() => { uni.navigateBack() }, 1500)
   } catch (e) {}
+}
+
+function addTopic(topicName: string) {
+  if (!store.selectedTopics.includes(topicName)) {
+    store.selectedTopics.push(topicName)
+  }
+}
+
+defineExpose({ addTopic })
+
+// 目的地搜索联想相关
+const showSuggestions = ref(false)
+const suggestions = ref<any[]>([])
+let inputTimer: any = null
+
+function onDestinationInput(e: any) {
+  const val = e.detail.value
+  if (!val.trim()) {
+    suggestions.value = []
+    showSuggestions.value = false
+    return
+  }
+  
+  if (inputTimer) clearTimeout(inputTimer)
+  inputTimer = setTimeout(async () => {
+    try {
+      let lat = 39.9042
+      let lng = 116.4074
+      
+      uni.getLocation({
+        type: 'wgs84',
+        success: (res) => {
+          lat = res.latitude
+          lng = res.longitude
+        },
+        complete: async () => {
+          try {
+            const res = await http.get('/map/get-suggest', { keyword: val, lat, lng })
+            suggestions.value = res || []
+            showSuggestions.value = suggestions.value.length > 0
+          } catch (err) {
+            console.error('get-suggest fail', err)
+          }
+        }
+      })
+    } catch (e) {
+      console.error(e)
+    }
+  }, 400)
+}
+
+function selectSuggestion(item: any) {
+  // 带出关联城市/地区，如果有具体的城市则使用城市，没有则用省份/标题
+  const cityOrDistrict = item.city || item.province || item.title
+  store.travelData.destination = cityOrDistrict
+  showSuggestions.value = false
+}
+
+function hideSuggestWithDelay() {
+  setTimeout(() => {
+    showSuggestions.value = false
+  }, 250)
+}
+
+// 心情与天气字典 (从后台获取)
+const weatherList = computed(() => dictStore.getDict('weather'))
+const moodList = computed(() => dictStore.getDict('mood'))
+const moodWeatherColumns = computed(() => {
+  return [
+    weatherList.value.map(item => item.dictLabel),
+    moodList.value.map(item => item.dictLabel)
+  ]
+})
+
+function onMoodWeatherChange(e: any, dayIdx: number) {
+  const val = e.detail.value || [0, 0]
+  const weather = weatherList.value[val[0] || 0]?.dictLabel || ''
+  const mood = moodList.value[val[1] || 0]?.dictLabel || ''
+  store.travelData.daysList[dayIdx].moodWeather = `${weather} / ${mood}`
 }
 
 async function saveDraft() {
@@ -156,9 +240,28 @@ function chooseLocation() {
           <view class="section-header">
             <text class="s-title">出行信息</text>
           </view>
-          <view class="n-item is-row">
+          <view class="n-item is-row" style="position: relative; overflow: visible;">
             <view class="n-label">目的地</view>
-            <input class="n-input" v-model="store.travelData.destination" placeholder="打卡前往的城市/景点" />
+            <input 
+              class="n-input" 
+              v-model="store.travelData.destination" 
+              @input="onDestinationInput" 
+              @blur="hideSuggestWithDelay"
+              placeholder="打卡前往的城市/景点" 
+            />
+            
+            <!-- 目的地输入联想建议面板 -->
+            <view class="suggestion-panel" v-if="showSuggestions">
+              <view 
+                class="suggestion-item" 
+                v-for="(item, index) in suggestions" 
+                :key="index" 
+                @click="selectSuggestion(item)"
+              >
+                <text class="s-title">{{ item.title }}</text>
+                <text class="s-desc">{{ item.province || '' }}{{ item.city || '' }}{{ item.district || '' }}</text>
+              </view>
+            </view>
           </view>
 
           <picker mode="date" @change="(e) => store.tripDate = e.detail.value">
@@ -198,10 +301,13 @@ function chooseLocation() {
             <input class="n-input" v-model="day.title" placeholder="一句话概括今天" />
           </view>
 
-          <view class="n-item is-row">
-            <view class="n-label">心情/天气</view>
-            <input class="n-input" v-model="day.moodWeather" placeholder="如: 晴天 / 激动" />
-          </view>
+          <picker mode="multiSelector" :range="moodWeatherColumns" @change="onMoodWeatherChange($event, idx)">
+            <view class="n-item is-row is-link">
+              <view class="n-label">心情/天气</view>
+              <view class="n-content" :class="{'ph-color': !day.moodWeather}">{{ day.moodWeather || '选择天气与心情' }}</view>
+              <text class="arrow">›</text>
+            </view>
+          </picker>
 
           <view class="n-item no-border">
             <view class="n-label">日记正文</view>
@@ -389,6 +495,50 @@ function chooseLocation() {
       .sub-label { font-size: 26rpx; color: #cbd5e1; margin-left: 10rpx; }
     }
     .arrow { font-size: 40rpx; color: #cbd5e1; }
+  }
+}
+
+.suggestion-panel {
+  position: absolute;
+  top: 90rpx;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.08);
+  border-radius: 12rpx;
+  z-index: 99;
+  max-height: 380rpx;
+  overflow-y: auto;
+  border: 1rpx solid #f1f5f9;
+}
+
+.suggestion-item {
+  padding: 24rpx 30rpx;
+  border-bottom: 1rpx solid #f8fafc;
+  display: flex;
+  flex-direction: column;
+  
+  .s-title {
+    font-size: 28rpx;
+    color: #1e293b;
+    font-weight: 600;
+  }
+  
+  .s-desc {
+    font-size: 22rpx;
+    color: #94a3b8;
+    margin-top: 6rpx;
+  }
+  
+  &:active {
+    background: #f1f5f9;
+  }
+}
+
+.is-link {
+  .n-content {
+    color: #1e293b;
+    font-weight: 500;
   }
 }
 </style>
