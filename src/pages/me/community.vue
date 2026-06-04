@@ -356,9 +356,9 @@ async function removeCollection(item: any) {
             <text class="c-tab" :class="{ active: activeCreationTab === 2 }" @click="activeCreationTab = 2">游记</text>
           </view>
 
-          <!-- 笔记列表 -->
-          <view v-if="activeCreationTab === 0">
-            <view class="note-grid" v-if="myNotes.length > 0">
+          <!-- 创作列表 (支持笔记/攻略/游记动态列表渲染) -->
+          <template v-if="myNotes.length > 0">
+            <view class="note-grid">
               <view class="note-card" v-for="item in myNotes" :key="item.id">
                 <view class="n-card-inner" @click="goNoteDetail(item.id)">
                   <image class="n-cover" :src="item.coverUrl" mode="aspectFill" />
@@ -375,18 +375,20 @@ async function removeCollection(item: any) {
                 </view>
               </view>
             </view>
+          </template>
 
-            <!-- 笔记空状态 (保留骆驼插图) -->
-            <view class="empty-state camel-state" v-if="myNotes.length === 0">
-              <view class="empty-illustration">
-                <text class="emoji-img">🐸</text>
-              </view>
-              <text class="empty-text">还没有笔记，快来发布笔记参与话题讨论吧~</text>
+          <!-- 空状态 -->
+          <view class="empty-state camel-state" v-else>
+            <view class="empty-illustration">
+              <text class="emoji-img">🐸</text>
             </view>
-          </view>
-          <view class="empty-state" v-else>
-            <view class="emoji-box">✍️</view>
-            <text class="empty-text">快来分享你的旅行故事吧</text>
+            <text class="empty-text">
+              {{ 
+                activeCreationTab === 0 
+                  ? '还没有笔记，快来发布笔记参与话题讨论吧~' 
+                  : (activeCreationTab === 1 ? '还没有攻略，快来发布攻略提供实用指南吧~' : '还没有游记，快来记录你的完整旅行足迹吧~')
+              }}
+            </text>
           </view>
         </view>
 
