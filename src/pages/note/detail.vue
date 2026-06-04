@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onLoad, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { noteApi } from '../../api/note'
 import { historyApi } from '../../api/history'
@@ -22,6 +22,23 @@ const commentContent = ref('')
 const replyingTo = ref<CommentVO | null>(null)
 const replyRootId = ref<number | null>(null)
 
+const guideData = ref<any>(null)
+const travelData = ref<any>(null)
+
+const navTitle = computed(() => {
+  if (!note.value) return '详情'
+  if (note.value.type === 'guide') return '攻略详情'
+  if (note.value.type === 'travel') return '游记详情'
+  return '笔记详情'
+})
+
+function previewImage(urls: string[], current: string) {
+  uni.previewImage({
+    urls,
+    current
+  })
+}
+
 onLoad((options: any) => {
   if (options && options.id) {
     loadDetail(options.id)
@@ -38,6 +55,20 @@ async function loadDetail(id: string) {
       images.value = JSON.parse(res.images)
     } else if (res.coverUrl) {
       images.value = [res.coverUrl]
+    }
+    
+    // 解析 extraData 结构化数据
+    if (res.extraData) {
+      try {
+        const extra = typeof res.extraData === 'string' ? JSON.parse(res.extraData) : res.extraData
+        if (res.type === 'guide') {
+          guideData.value = extra
+        } else if (res.type === 'travel') {
+          travelData.value = extra
+        }
+      } catch (e) {
+        console.error('Failed to parse extraData:', e)
+      }
     }
     
     // 记录浏览历史
@@ -220,17 +251,18 @@ onShareTimeline(() => {
 <template>
   <view class="note-detail" v-if="note">
     <!-- 顶部导航栏：始终白色背景确保返回按钮可见 -->
-    <NavBar back fixed title="笔记详情" textColor="#333" background="#fff" />
+    <NavBar back fixed :title="navTitle" textColor="#333" background="#fff" />
     
     <scroll-view class="detail-scroll" scroll-y>
       <!-- 顶部大图轮播 -->
-      <swiper class="banner-swiper" indicator-dots circular autoplay indicator-active-color="#0ea5e9">
+      <swiper class="banner-swiper" indicator-dots circular autoplay indicator-active-color="#0ea5e9" v-if="images && images.length > 0">
         <swiper-item v-for="(img, idx) in images" :key="idx">
-          <image :src="img" mode="aspectFill" class="banner-img" />
+          <image :src="img" mode="aspectFill" class="banner-img" @click="previewImage(images, img)" />
         </swiper-item>
       </swiper>
 
-      <view class="content-card">
+      <!-- 1. 普通笔记视图 -->
+      <view class="content-card" v-if="note.type === 'note' || !note.type">
         <view class="header">
           <text class="title">{{ note.title }}</text>
           <view class="meta">
@@ -251,8 +283,235 @@ onShareTimeline(() => {
             # {{ tag }}
           </view>
         </view>
+      </view>
 
-        <!-- 评论区 -->
+      <!-- 2. 攻略视图 -->
+      <view class="guide-detail-card" v-else-if="note.type === 'guide' && guideData">
+        <view class="header">
+          <text class="title">{{ note.title }}</text>
+          <view class="meta">
+            <text class="time">{{ note.createTime }}</text>
+            <view class="location" v-if="note.locationName">
+              <text class="icon">📍</text>
+              <text>{{ note.locationName }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 攻略核心指标小胶囊 -->
+        <view class="quick-facts">
+          <view class="fact-capsule blue" v-if="note.days">
+            <text class="f-icon">⏱️</text>
+            <text class="f-text">建议游玩: </text>
+            <text class="f-val">{{ note.days }}天</text>
+          </view>
+          <view class="fact-capsule gold" v-if="note.cost">
+            <text class="f-icon">💰</text>
+            <text class="f-text">人均预算: </text>
+            <text class="f-val">￥{{ note.cost }}</text>
+          </view>
+          <view class="fact-capsule green" v-if="note.season">
+            <text class="f-icon">🌸</text>
+            <text class="f-text">最佳出游: </text>
+            <text class="f-val">{{ note.season }}</text>
+          </view>
+        </view>
+
+        <!-- 概况与基本信息 -->
+        <view class="detail-section">
+          <view class="section-title">
+            <text class="s-num">1</text>
+            <text class="s-name">概况与基本信息</text>
+          </view>
+          <view class="section-body">
+            <text class="rich-text">{{ note.content }}</text>
+          </view>
+        </view>
+
+        <!-- 交通与实用信息 -->
+        <view class="detail-section" v-if="guideData.traffic || (guideData.practicalInfo && (guideData.practicalInfo.attention || guideData.practicalInfo.complaintPhone || guideData.practicalInfo.medicalService || guideData.practicalInfo.localWebsite))">
+          <view class="section-title">
+            <text class="s-num">2</text>
+            <text class="s-name">交通与实用信息</text>
+          </view>
+          <view class="section-body">
+            <view class="sub-block" v-if="guideData.traffic">
+              <view class="sub-title">📍 交通指南</view>
+              <text class="sub-content">{{ guideData.traffic }}</text>
+            </view>
+            <view class="sub-block" v-if="guideData.practicalInfo && guideData.practicalInfo.attention">
+              <view class="sub-title">⚠️ 注意事项</view>
+              <text class="sub-content">{{ guideData.practicalInfo.attention }}</text>
+            </view>
+            
+            <!-- 电话网址附加卡片 -->
+            <view class="info-grid" v-if="guideData.practicalInfo && (guideData.practicalInfo.complaintPhone || guideData.practicalInfo.medicalService || guideData.practicalInfo.localWebsite)">
+              <view class="info-item" v-if="guideData.practicalInfo.complaintPhone">
+                <text class="i-label">📞 投诉电话</text>
+                <text class="i-value">{{ guideData.practicalInfo.complaintPhone }}</text>
+              </view>
+              <view class="info-item" v-if="guideData.practicalInfo.medicalService">
+                <text class="i-label">🏥 医疗服务</text>
+                <text class="i-value">{{ guideData.practicalInfo.medicalService }}</text>
+              </view>
+              <view class="info-item" v-if="guideData.practicalInfo.localWebsite">
+                <text class="i-label">🌐 官方网站</text>
+                <text class="i-value">{{ guideData.practicalInfo.localWebsite }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 路线与打卡推荐 -->
+        <view class="detail-section" v-if="guideData.routes || guideData.accommodation || guideData.food || guideData.shopping">
+          <view class="section-title">
+            <text class="s-num">3</text>
+            <text class="s-name">路线与打卡推荐</text>
+          </view>
+          <view class="section-body">
+            <view class="sub-block" v-if="guideData.routes">
+              <view class="sub-title">🗺️ 推荐路线</view>
+              <text class="sub-content">{{ guideData.routes }}</text>
+            </view>
+            <view class="sub-block" v-if="guideData.accommodation">
+              <view class="sub-title">🏨 住宿指南</view>
+              <text class="sub-content">{{ guideData.accommodation }}</text>
+            </view>
+            <view class="sub-block" v-if="guideData.food">
+              <view class="sub-title">🍜 特色美食</view>
+              <text class="sub-content">{{ guideData.food }}</text>
+            </view>
+            <view class="sub-block" v-if="guideData.shopping">
+              <view class="sub-title">🎁 特产选购</view>
+              <text class="sub-content">{{ guideData.shopping }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 其他建议 -->
+        <view class="detail-section" v-if="guideData.others && (guideData.others.budget || guideData.others.clothing)">
+          <view class="section-title">
+            <text class="s-num">4</text>
+            <text class="s-name">其他建议</text>
+          </view>
+          <view class="section-body">
+            <view class="sub-block" v-if="guideData.others.budget">
+              <view class="sub-title">💵 预算分配</view>
+              <text class="sub-content">{{ guideData.others.budget }}</text>
+            </view>
+            <view class="sub-block" v-if="guideData.others.clothing">
+              <view class="sub-title">🧥 穿衣出行</view>
+              <text class="sub-content">{{ guideData.others.clothing }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="tags-row" v-if="note.topicTags">
+          <view class="tag" v-for="tag in note.topicTags.split(',')" :key="tag">
+            # {{ tag }}
+          </view>
+        </view>
+      </view>
+
+      <!-- 3. 游记视图 -->
+      <view class="travel-detail-card" v-else-if="note.type === 'travel' && travelData">
+        <view class="header">
+          <text class="title">{{ note.title }}</text>
+          <view class="meta">
+            <text class="time">{{ note.createTime }}</text>
+            <view class="location" v-if="note.locationName">
+              <text class="icon">📍</text>
+              <text>{{ note.locationName }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 出行信息卡片 -->
+        <view class="travel-info-card">
+          <view class="info-col" v-if="travelData.destination">
+            <text class="col-label">🗺️ 目的地</text>
+            <text class="col-val">{{ travelData.destination }}</text>
+          </view>
+          <view class="info-col" v-if="note.tripDate">
+            <text class="col-label">📅 出发日期</text>
+            <text class="col-val">{{ note.tripDate }}</text>
+          </view>
+          <view class="info-col" v-if="note.days">
+            <text class="col-label">⏱️ 游玩天数</text>
+            <text class="col-val">{{ note.days }}天</text>
+          </view>
+          <view class="info-col" v-if="note.companions">
+            <text class="col-label">👥 同行伙伴</text>
+            <text class="col-val">{{ note.companions }}</text>
+          </view>
+        </view>
+
+        <!-- 每日足迹时间轴 (Timeline) -->
+        <view class="timeline-container" v-if="travelData.daysList && travelData.daysList.length > 0">
+          <view class="timeline-item" v-for="(day, idx) in travelData.daysList" :key="idx">
+            <!-- 左侧时间轴节点 -->
+            <view class="timeline-node">
+              <view class="node-badge">D{{ day.dayIndex }}</view>
+              <view class="node-line" v-if="idx < travelData.daysList.length - 1"></view>
+            </view>
+            
+            <!-- 右侧本日记录卡片 -->
+            <view class="timeline-content">
+              <view class="day-header">
+                <text class="day-theme">{{ day.title }}</text>
+                <view class="weather-mood-tag" v-if="day.moodWeather">
+                  <text class="tag-text">{{ day.moodWeather }}</text>
+                </view>
+              </view>
+              
+              <text class="day-body">{{ day.content }}</text>
+              
+              <!-- 本日精彩美照 (3列Grid) -->
+              <view class="day-photos" v-if="day.images && day.images.length > 0">
+                <image 
+                  v-for="(pImg, pIdx) in day.images" 
+                  :key="pIdx" 
+                  :src="pImg" 
+                  mode="aspectFill" 
+                  class="day-photo"
+                  @click="previewImage(day.images, pImg)" 
+                />
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 总结与心得 -->
+        <view class="detail-section travel-summary-section" v-if="travelData.costSummary || travelData.tips || travelData.summary">
+          <view class="section-title">
+            <text class="s-icon">📝</text>
+            <text class="s-name">总结与心得</text>
+          </view>
+          <view class="section-body">
+            <view class="sub-block" v-if="travelData.costSummary">
+              <view class="sub-title">💰 整体开销细账</view>
+              <text class="sub-content">{{ travelData.costSummary }}</text>
+            </view>
+            <view class="sub-block" v-if="travelData.tips">
+              <view class="sub-title">💡 避坑Tips</view>
+              <text class="sub-content">{{ travelData.tips }}</text>
+            </view>
+            <view class="sub-block" v-if="travelData.summary">
+              <view class="sub-title">✨ 出行感悟</view>
+              <text class="sub-content">{{ travelData.summary }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="tags-row" v-if="note.topicTags">
+          <view class="tag" v-for="tag in note.topicTags.split(',')" :key="tag">
+            # {{ tag }}
+          </view>
+        </view>
+      </view>
+
+      <!-- 评论区 (公共部分) -->
+      <view class="content-card comment-section-card">
         <view class="comments-section">
           <view class="s-title">共 {{ note.commentCount || 0 }} 条评论</view>
           <view class="comment-list" v-if="comments.length > 0">
@@ -359,7 +618,7 @@ onShareTimeline(() => {
 
 /* 评论区 */
 .comments-section {
-  margin-top: 60rpx;
+  margin-top: 20rpx;
   border-top: 1rpx solid #f1f5f9;
   padding-top: 40rpx;
   .s-title { font-size: 30rpx; font-weight: 700; color: #1e293b; margin-bottom: 30rpx; }
@@ -401,5 +660,326 @@ onShareTimeline(() => {
     width: 120rpx; height: 64rpx; line-height: 64rpx; background: #00bac7; color: #fff;
     font-size: 26rpx; border-radius: 32rpx; margin: 0; font-weight: bold; &::after { border: none; }
   }
+}
+
+/* 攻略详情卡片样式 */
+.guide-detail-card {
+  padding: 40rpx 32rpx;
+  background: #fff;
+  
+  .header {
+    margin-bottom: 30rpx;
+    .title { font-size: 40rpx; font-weight: bold; color: #1e293b; line-height: 1.4; display: block; margin-bottom: 20rpx; }
+    .meta { display: flex; justify-content: space-between; align-items: center; font-size: 24rpx; color: #94a3b8; }
+    .location { display: flex; align-items: center; color: #00bac7; font-weight: bold; .icon { margin-right: 6rpx; } }
+  }
+}
+
+.quick-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 40rpx;
+  
+  .fact-capsule {
+    display: flex;
+    align-items: center;
+    padding: 12rpx 24rpx;
+    border-radius: 40rpx;
+    font-size: 24rpx;
+    font-weight: bold;
+    box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+    
+    .f-icon {
+      margin-right: 8rpx;
+      font-size: 28rpx;
+    }
+    
+    .f-text {
+      color: #64748b;
+      margin-right: 4rpx;
+    }
+    
+    &.blue {
+      background: #f0f9ff;
+      color: #0ea5e9;
+      border: 1rpx solid #e0f2fe;
+      .f-val { color: #0284c7; }
+    }
+    
+    &.gold {
+      background: #fefbeb;
+      color: #ca8a04;
+      border: 1rpx solid #fef3c7;
+      .f-val { color: #b45309; }
+    }
+    
+    &.green {
+      background: #f0fdf4;
+      color: #16a34a;
+      border: 1rpx solid #dcfce7;
+      .f-val { color: #15803d; }
+    }
+  }
+}
+
+.detail-section {
+  background: #fff;
+  border: 1rpx solid #f1f5f9;
+  border-radius: 20rpx;
+  padding: 30rpx 28rpx;
+  margin-bottom: 30rpx;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.015);
+  
+  .section-title {
+    display: flex;
+    align-items: center;
+    margin-bottom: 24rpx;
+    
+    .s-num {
+      width: 44rpx;
+      height: 44rpx;
+      background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+      color: #fff;
+      font-size: 24rpx;
+      font-weight: bold;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 16rpx;
+    }
+    
+    .s-icon {
+      font-size: 32rpx;
+      margin-right: 16rpx;
+    }
+    
+    .s-name {
+      font-size: 30rpx;
+      font-weight: bold;
+      color: #1e293b;
+    }
+  }
+  
+  .section-body {
+    .rich-text {
+      font-size: 28rpx;
+      color: #334155;
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+    
+    .sub-block {
+      margin-bottom: 24rpx;
+      
+      &:last-child {
+        margin-bottom: 0;
+      }
+      
+      .sub-title {
+        font-size: 26rpx;
+        font-weight: bold;
+        color: #475569;
+        margin-bottom: 8rpx;
+      }
+      
+      .sub-content {
+        font-size: 28rpx;
+        color: #334155;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+    }
+    
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16rpx;
+      margin-top: 24rpx;
+      border-top: 1rpx solid #f1f5f9;
+      padding-top: 24rpx;
+      
+      .info-item {
+        background: #f8fafc;
+        padding: 16rpx 20rpx;
+        border-radius: 12rpx;
+        
+        .i-label {
+          display: block;
+          font-size: 22rpx;
+          color: #64748b;
+          font-weight: 500;
+          margin-bottom: 6rpx;
+        }
+        
+        .i-value {
+          font-size: 26rpx;
+          color: #1e293b;
+          font-weight: bold;
+          word-break: break-all;
+        }
+      }
+    }
+  }
+}
+
+/* 游记详情卡片样式 */
+.travel-detail-card {
+  padding: 40rpx 32rpx;
+  background: #fff;
+  
+  .header {
+    margin-bottom: 30rpx;
+    .title { font-size: 40rpx; font-weight: bold; color: #1e293b; line-height: 1.4; display: block; margin-bottom: 20rpx; }
+    .meta { display: flex; justify-content: space-between; align-items: center; font-size: 24rpx; color: #94a3b8; }
+    .location { display: flex; align-items: center; color: #00bac7; font-weight: bold; .icon { margin-right: 6rpx; } }
+  }
+}
+
+.travel-info-card {
+  background: #f8fafc;
+  border-radius: 24rpx;
+  padding: 30rpx;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24rpx;
+  margin-bottom: 40rpx;
+  border: 1rpx solid #f1f5f9;
+  
+  .info-col {
+    display: flex;
+    flex-direction: column;
+    
+    .col-label {
+      font-size: 22rpx;
+      color: #64748b;
+      margin-bottom: 8rpx;
+      font-weight: 500;
+    }
+    
+    .col-val {
+      font-size: 28rpx;
+      color: #1e293b;
+      font-weight: bold;
+    }
+  }
+}
+
+/* 每日足迹时间轴 (Timeline) */
+.timeline-container {
+  padding: 10rpx 0;
+  margin-bottom: 40rpx;
+}
+
+.timeline-item {
+  display: flex;
+  position: relative;
+  margin-bottom: 40rpx;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.timeline-node {
+  width: 90rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  
+  .node-badge {
+    width: 64rpx;
+    height: 64rpx;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff;
+    font-size: 24rpx;
+    font-weight: bold;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4rpx 10rpx rgba(14, 165, 233, 0.2);
+    z-index: 5;
+  }
+  
+  .node-line {
+    flex: 1;
+    width: 4rpx;
+    background: #e2e8f0;
+    margin-top: 10rpx;
+    margin-bottom: -30rpx;
+    z-index: 1;
+  }
+}
+
+.timeline-content {
+  flex: 1;
+  background: #fff;
+  border: 1rpx solid #f1f5f9;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-left: 10rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.01);
+  
+  .day-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8rpx;
+    margin-bottom: 16rpx;
+    
+    .day-theme {
+      font-size: 32rpx;
+      font-weight: bold;
+      color: #1e293b;
+      line-height: 1.3;
+    }
+    
+    .weather-mood-tag {
+      align-self: flex-start;
+      background: #f1f5f9;
+      padding: 4rpx 16rpx;
+      border-radius: 20rpx;
+      
+      .tag-text {
+        font-size: 20rpx;
+        color: #475569;
+        font-weight: 500;
+      }
+    }
+  }
+  
+  .day-body {
+    font-size: 28rpx;
+    color: #334155;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    display: block;
+    margin-bottom: 20rpx;
+  }
+  
+  .day-photos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12rpx;
+    
+    .day-photo {
+      width: 100%;
+      height: 160rpx;
+      border-radius: 12rpx;
+      background: #f8fafc;
+    }
+  }
+}
+
+.travel-summary-section {
+  border-left: 8rpx solid #0ea5e9;
+  background: #f8fafc;
+}
+
+.comment-section-card {
+  margin-top: 20rpx;
+  padding: 0 32rpx;
 }
 </style>
