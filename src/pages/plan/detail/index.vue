@@ -5,6 +5,7 @@ import { planApi, type PlanDetailVO, type TravelItem, type TravelDay, type DayWi
 import { http } from '../../../utils/request'
 import NavBar from '../../../components/common/NavBar.vue'
 import { useNavBar } from '../../../composables/useNavBar'
+import { commonApi } from '../../../api/common'
 
 const planId = ref<number>(0)
 const detail = ref<PlanDetailVO | null>(null)
@@ -368,7 +369,7 @@ function handleCheckInBtnClick(item: any) {
     })
     return
   }
-  checkIn(item)
+  openCheckinDrawer(item)
 }
 
 // 点击行程单项
@@ -745,6 +746,298 @@ function goBackToList() {
     url: '/pages/plan/list/index'
   })
 }
+
+// 记账费用类型名映射
+const expenseTypeNames = ['🍽️ 餐饮', '🏨 住宿', '✈️ 交通', '🎟️ 门票', '🛍️ 购物', '🎭 其他']
+
+// 今日预计与实际花费计算
+const dayEstimatedCost = computed(() => {
+  if (!currentDay.value?.items) return 0
+  return currentDay.value.items.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0)
+})
+
+const dayActualCost = computed(() => {
+  if (!currentDay.value?.items) return 0
+  return currentDay.value.items.reduce((sum, item) => sum + (item.checkedIn ? (Number(item.actualCost) || 0) : 0), 0)
+})
+
+const dayBudget = computed(() => {
+  if (dayEstimatedCost.value > 0) return dayEstimatedCost.value
+  if (plan.value?.budget && plan.value?.days) {
+    return Math.round(Number(plan.value.budget) / plan.value.days)
+  }
+  return 500
+})
+
+const dayPercent = computed(() => {
+  if (dayBudget.value === 0) return 0
+  return Math.min(100, Math.round((dayActualCost.value / dayBudget.value) * 100))
+})
+
+const totalBudget = computed(() => Number(plan.value?.budget) || 0)
+const totalActual = computed(() => Number(plan.value?.actualCost) || 0)
+const totalPercent = computed(() => {
+  if (totalBudget.value === 0) return 0
+  return Math.min(100, Math.round((totalActual.value / totalBudget.value) * 100))
+})
+
+// 打卡抽屉状态
+const showCheckInDrawer = ref(false)
+const checkingItem = ref<any>(null)
+const checkinLocationStr = ref('')
+const checkinForm = ref({
+  content: '',
+  cost: '',
+  costType: 6,
+  images: [] as string[],
+  hasExpense: false
+})
+const isCheckinAiLoading = ref(false)
+const checkinAiResult = ref<any>(null)
+
+// 开启打卡抽屉
+function openCheckinDrawer(item: any) {
+  checkingItem.value = item
+  checkinLocationStr.value = item.address || ''
+  checkinForm.value = {
+    content: '',
+    cost: item.estimatedCost ? String(item.estimatedCost) : '',
+    costType: 6,
+    images: [] as string[],
+    hasExpense: item.estimatedCost && Number(item.estimatedCost) > 0
+  }
+  
+  // 默认推荐的费用类型映射
+  let itemType = item.type || 6
+  let defaultExpenseType = 6
+  if (itemType === 1) defaultExpenseType = 3 // 交通 -> 交通
+  else if (itemType === 2) defaultExpenseType = 1 // 美食 -> 餐饮
+  else if (itemType === 3) defaultExpenseType = 2 // 住宿 -> 住宿
+  else if (itemType === 4) defaultExpenseType = 3 
+  else if (itemType === 5) defaultExpenseType = 5 
+  checkinForm.value.costType = defaultExpenseType
+
+  checkinAiResult.value = null
+  showCheckInDrawer.value = true
+}
+
+function closeCheckinDrawer() {
+  showCheckInDrawer.value = false
+  checkingItem.value = null
+}
+
+function toggleHasExpense(e: any) {
+  checkinForm.value.hasExpense = e.detail.value
+}
+
+function onExpenseTypeChange(e: any) {
+  checkinForm.value.costType = Number(e.detail.value) + 1
+}
+
+// 选择打卡定位
+function chooseCheckinLocation() {
+  uni.chooseLocation({
+    success: (res) => {
+      checkinLocationStr.value = res.name || res.address || ''
+    }
+  })
+}
+
+// 📸 上传打卡图片
+async function uploadCheckinImages() {
+  uni.chooseImage({
+    count: 9 - checkinForm.value.images.length,
+    success: async (res) => {
+      uni.showLoading({ title: '照片上传中...' })
+      for (const path of res.tempFilePaths) {
+        try {
+          const url = await commonApi.upload(path, 'notes')
+          checkinForm.value.images.push(url)
+        } catch (e) {
+          uni.showToast({ title: '照片上传失败', icon: 'none' })
+        }
+      }
+      uni.hideLoading()
+    }
+  })
+}
+
+// 🤖 调用 AI 打卡智能推荐建议
+async function callCheckinAiSuggest() {
+  if (!checkingItem.value) return
+  isCheckinAiLoading.value = true
+  uni.showLoading({ title: 'AI正在分析与润色...' })
+  
+  try {
+    const res: any = await planApi.getCheckinAiSuggest(checkingItem.value.id, checkinForm.value.content)
+    uni.hideLoading()
+    
+    // 解析 AI 输出的 JSON
+    let data = res
+    if (typeof res === 'string') {
+      try { data = JSON.parse(res) } catch (e) { console.error(e) }
+    }
+    
+    if (data) {
+      checkinAiResult.value = data
+      // 回填润色后的心声文案
+      if (data.checkinNote) {
+        checkinForm.value.content = data.checkinNote
+      }
+      // 回填建议金额
+      if (data.suggestedExpense && data.suggestedExpense.amount !== undefined) {
+        checkinForm.value.cost = String(data.suggestedExpense.amount)
+        checkinForm.value.hasExpense = Number(data.suggestedExpense.amount) > 0
+      }
+      // 回填费用分类
+      if (data.suggestedExpense && data.suggestedExpense.type !== undefined) {
+        const typeVal = Number(data.suggestedExpense.type)
+        if (typeVal >= 1 && typeVal <= 6) {
+          checkinForm.value.costType = typeVal
+        }
+      }
+      uni.showToast({ title: 'AI 自动生成润色完毕', icon: 'success' })
+    }
+  } catch (err: any) {
+    uni.hideLoading()
+    uni.showToast({ title: err?.data?.message || 'AI 思考失败了，请稍候再试', icon: 'none' })
+  } finally {
+    isCheckinAiLoading.value = false
+  }
+}
+
+// ✍️ 提交打卡记账表单
+async function submitCheckinForm() {
+  if (!checkingItem.value) return
+  
+  const payload = {
+    planId: planId.value,
+    dayId: currentDay.value.day.id,
+    itemId: checkingItem.value.id,
+    type: 1, // 打卡
+    content: checkinForm.value.content,
+    cost: checkinForm.value.hasExpense && checkinForm.value.cost ? Number(checkinForm.value.cost) : 0,
+    costType: checkinForm.value.hasExpense ? checkinForm.value.costType : null,
+    images: checkinForm.value.images,
+    checkinLocation: checkinLocationStr.value,
+    actualStartTime: new Date().toISOString()
+  }
+
+  uni.showLoading({ title: '正在提交打卡...' })
+  try {
+    await http.post('/plan/checkin', payload)
+    uni.hideLoading()
+    uni.showToast({ title: '打卡即记账成功！', icon: 'success' })
+    
+    // 关闭抽屉并重载刷新数据
+    closeCheckinDrawer()
+    await loadData()
+  } catch (err: any) {
+    uni.hideLoading()
+    uni.showToast({ title: err?.data?.message || '提交打卡失败', icon: 'none' })
+  }
+}
+
+// 每日/全程总结抽屉状态
+const showDailySummaryDrawer = ref(false)
+const dailySummaryResult = ref<any>(null)
+const isDailySummaryLoading = ref(false)
+
+// 开启总结抽屉并调用大模型
+async function openDailySummaryDrawer() {
+  if (!plan.value || !currentDay.value) return
+  showDailySummaryDrawer.value = true
+  isDailySummaryLoading.value = true
+  dailySummaryResult.value = null
+  
+  try {
+    const res: any = await planApi.getDailySummary(planId.value, currentDay.value.day.id)
+    
+    let data = res
+    if (typeof res === 'string') {
+      try { data = JSON.parse(res) } catch (e) {}
+    }
+    
+    if (data) {
+      dailySummaryResult.value = data
+    } else {
+      uni.showToast({ title: '生成总结格式异常', icon: 'none' })
+    }
+  } catch (err: any) {
+    uni.showToast({ title: err?.data?.message || '总结生成失败', icon: 'none' })
+    closeDailySummaryDrawer()
+  } finally {
+    isDailySummaryLoading.value = false
+  }
+}
+
+function closeDailySummaryDrawer() {
+  showDailySummaryDrawer.value = false
+  dailySummaryResult.value = null
+}
+
+// 复制朋友圈文字
+function copyDiaryText(text: string) {
+  if (!text) return
+  uni.setClipboardData({
+    data: text,
+    success: () => {
+      uni.showToast({ title: '复制成功', icon: 'success' })
+    }
+  })
+}
+
+// 🚀 一键将总结转化为游记发布
+function goPublishTravelNote() {
+  if (!plan.value || !dailySummaryResult.value) return
+  
+  // 汇总今日所有的打卡图片作为游记今日配图
+  const allImages: string[] = []
+  if (currentDay.value?.items) {
+    currentDay.value.items.forEach(it => {
+      if (it.checkinRecord && it.checkinRecord.images) {
+        try {
+          const imgs = typeof it.checkinRecord.images === 'string' ? JSON.parse(it.checkinRecord.images) : it.checkinRecord.images
+          if (Array.isArray(imgs)) {
+            allImages.push(...imgs)
+          }
+        } catch (e) {}
+      }
+    })
+  }
+
+  // 组装结构化游记格式，写入缓存供发布页读取
+  const travelNoteData = {
+    title: plan.value.title + " · 游记手账",
+    destination: plan.value.destination,
+    tripDate: plan.value.startDate,
+    totalDays: plan.value.days,
+    daysList: [
+      {
+        dayIndex: currentDay.value.day.dayIndex,
+        date: currentDay.value.day.date,
+        title: currentDay.value.day.title || '今日旅程小结',
+        moodWeather: '晴朗 / 愉快',
+        content: dailySummaryResult.value.daySummary || '',
+        images: allImages,
+        location: plan.value.destination
+      }
+    ],
+    summary: "本次旅行开销总计：" + (dailySummaryResult.value.expenseAnalysis?.total || 0) + "元。\n整体感悟：" + (dailySummaryResult.value.moodSuggestion || ""),
+    costSummary: JSON.stringify(dailySummaryResult.value.expenseAnalysis?.breakdown || {}),
+    tips: dailySummaryResult.value.expenseAnalysis?.insight || ""
+  }
+
+  // 存入本地 Storage
+  uni.setStorageSync('ai_summary_publish_data', travelNoteData)
+  
+  closeDailySummaryDrawer()
+  
+  // 跳转到发布游记页面
+  uni.navigateTo({
+    url: '/pages/note/publish-travel'
+  })
+}
 </script>
 
 <template>
@@ -802,6 +1095,62 @@ function goBackToList() {
           </view>
           <view class="progress-bar">
             <view class="progress-fill" :style="{ width: progress + '%' }" />
+          </view>
+        </view>
+      </view>
+
+      <!-- 💰 实时预算与账单反馈看板 -->
+      <view class="budget-card" v-if="plan && plan.status !== 0 && plan.status !== 4">
+        <view class="budget-card-header">
+          <view class="budget-title-wrap">
+            <text class="budget-card-icon">💰</text>
+            <text class="budget-card-title">预算与花费看板</text>
+          </view>
+          <button class="ai-summary-card-btn" @click="openDailySummaryDrawer">
+            ✨ AI行程总结
+          </button>
+        </view>
+        <view class="budget-card-body">
+          <!-- 今日花费进度 -->
+          <view class="budget-progress-item">
+            <view class="budget-progress-label-row">
+              <text class="progress-lbl">今日花费 (Day {{ currentDay?.day?.dayIndex }})</text>
+              <text class="progress-val">
+                <text class="actual-val" :class="{ warning: dayActualCost > dayBudget }">¥{{ dayActualCost }}</text> 
+                / ¥{{ dayBudget }}
+              </text>
+            </view>
+            <view class="budget-progress-bar-bg">
+              <view 
+                class="budget-progress-fill" 
+                :class="{ warning: dayActualCost > dayBudget }"
+                :style="{ width: Math.min(100, (dayActualCost / dayBudget) * 100) + '%' }" 
+              />
+            </view>
+          </view>
+          <!-- 全程花费进度 -->
+          <view class="budget-progress-item">
+            <view class="budget-progress-label-row">
+              <text class="progress-lbl">全程花费 (共 {{ plan.days }} 天)</text>
+              <text class="progress-val">
+                <text class="actual-val" :class="{ warning: Number(plan.actualCost) > Number(plan.budget) }">¥{{ plan.actualCost || 0 }}</text> 
+                / ¥{{ plan.budget || 0 }}
+              </text>
+            </view>
+            <view class="budget-progress-bar-bg">
+              <view 
+                class="budget-progress-fill" 
+                :class="{ warning: Number(plan.actualCost) > Number(plan.budget) }"
+                :style="{ width: Math.min(100, (Number(plan.actualCost) / (Number(plan.budget) || 1)) * 100) + '%' }" 
+              />
+            </view>
+          </view>
+          <!-- 超支预警提示 -->
+          <view class="budget-warning-tip" v-if="dayActualCost > dayBudget || Number(plan.actualCost) > Number(plan.budget)">
+            <text class="warn-icon">⚠️</text>
+            <text class="warn-txt">
+              {{ dayActualCost > dayBudget ? '今日花费已超支！建议晚上轻食或适当削减开支。' : '全程总花费已超出预算！请注意财务控制。' }}
+            </text>
           </view>
         </view>
       </view>
@@ -1354,6 +1703,166 @@ function goBackToList() {
         <button class="nav-large-btn" @click="goNavigation(selectedItemForDetail)" :disabled="!selectedItemForDetail.lat || !selectedItemForDetail.lng">
           <text class="btn-icon">🗺️</text>
           <text>{{ selectedItemForDetail.lat && selectedItemForDetail.lng ? '唤起手机地图导航' : '暂无空间位置(无法导航)' }}</text>
+        </button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 📸 极美打卡记账半屏抽屉 -->
+  <view class="checkin-drawer" :class="{ show: showCheckInDrawer }">
+    <view class="drawer-mask" @click="closeCheckinDrawer" />
+    <view class="drawer-content">
+      <view class="drawer-header">
+        <text class="drawer-title">📌 旅行打卡 · {{ checkingItem?.name }}</text>
+        <text class="close-btn" @click="closeCheckinDrawer">×</text>
+      </view>
+      
+      <scroll-view class="drawer-scroll" scroll-y>
+        <!-- 位置定位信息 -->
+        <view class="checkin-location-row" @click="chooseCheckinLocation">
+          <text class="loc-icon">📍</text>
+          <text class="loc-text">{{ checkinLocationStr || '获取当前位置(点击选择)' }}</text>
+          <text class="loc-arrow">›</text>
+        </view>
+        
+        <!-- 感想输入 -->
+        <view class="form-section">
+          <view class="section-lbl-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16rpx;">
+            <text class="section-lbl" style="margin-bottom: 0;">打卡心声 (支持AI智能填写)</text>
+            <button class="ai-fill-btn-top" :loading="isCheckinAiLoading" @click.stop="callCheckinAiSuggest" style="margin: 0; padding: 0 20rpx; font-size: 22rpx; font-weight: 600; height: 52rpx; line-height: 52rpx; border-radius: 26rpx; background: linear-gradient(135deg, #0ea5e9, #8b5cf6); color: #fff; border: none; box-shadow: 0 4rpx 10rpx rgba(14, 165, 233, 0.15);">
+              ✨ AI智能回填
+            </button>
+          </view>
+          <view class="textarea-wrap">
+            <textarea 
+              class="note-textarea" 
+              v-model="checkinForm.content" 
+              placeholder="写下你此刻在路上的感悟吧..."
+              maxlength="200"
+            />
+          </view>
+        </view>
+
+        <!-- AI 建议展示卡片 -->
+        <view class="ai-feedback-card" v-if="checkinAiResult">
+          <view class="ai-card-title-row">
+            <text class="ai-logo">✨ AI助理消费预测与防坑避雷</text>
+          </view>
+          <view class="ai-feedback-body">
+            <view class="ai-feedback-tip" v-if="checkinAiResult.budgetStatus?.warning">
+              <text class="icon">⚠️</text>
+              <text class="txt">{{ checkinAiResult.budgetStatus.warning }}</text>
+            </view>
+            <view class="ai-feedback-tip green" v-if="checkinAiResult.nextSuggestion">
+              <text class="icon">💡</text>
+              <text class="txt">小Tips: {{ checkinAiResult.nextSuggestion }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 记账板块 -->
+        <view class="form-section expense-section">
+          <view class="section-lbl-row">
+            <text class="section-lbl">在此处产生消费了吗？</text>
+            <switch :checked="checkinForm.hasExpense" @change="toggleHasExpense" color="#0ea5e9" style="transform: scale(0.8)" />
+          </view>
+          
+          <view class="expense-inputs" v-if="checkinForm.hasExpense">
+            <view class="input-item">
+              <text class="input-lbl">消费金额 (元)</text>
+              <input class="money-input" type="digit" v-model="checkinForm.cost" placeholder="0.00" />
+            </view>
+            <view class="input-item">
+              <text class="input-lbl">费用分类</text>
+              <picker :value="checkinForm.costType - 1" :range="expenseTypeNames" @change="onExpenseTypeChange">
+                <view class="picker-val">
+                  {{ expenseTypeNames[checkinForm.costType - 1] }} <text class="arrow">▼</text>
+                </view>
+              </picker>
+            </view>
+          </view>
+        </view>
+
+        <!-- 精彩照片上传 -->
+        <view class="form-section">
+          <text class="section-lbl">上传精彩足迹美照</text>
+          <view class="image-upload-grid">
+            <view class="upload-img-item" v-for="(img, idx) in checkinForm.images" :key="idx">
+              <image :src="img" mode="aspectFill" />
+              <view class="del-btn" @click="checkinForm.images.splice(idx, 1)">×</view>
+            </view>
+            <view class="upload-add-btn" @click="uploadCheckinImages" v-if="checkinForm.images.length < 9">
+              <text class="plus">+</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+      
+      <view class="drawer-footer">
+        <button class="drawer-btn cancel" @click="closeCheckinDrawer">取消</button>
+        <button class="drawer-btn confirm" @click="submitCheckinForm">完成打卡与记账</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 📝 AI当日行程总结抽屉 -->
+  <view class="checkin-drawer summary-drawer" :class="{ show: showDailySummaryDrawer }">
+    <view class="drawer-mask" @click="closeDailySummaryDrawer" />
+    <view class="drawer-content summary-content">
+      <view class="drawer-header">
+        <text class="drawer-title">✨ AI当日行程及记账总结</text>
+        <text class="close-btn" @click="closeDailySummaryDrawer">×</text>
+      </view>
+      
+      <scroll-view class="drawer-scroll" scroll-y>
+        <view class="summary-loading" v-if="isDailySummaryLoading">
+          <view class="loading-spinner" />
+          <text class="loading-text">AI 正在调取本日的所有打卡心声与消费细账，生成分析中...</text>
+        </view>
+        
+        <view class="summary-body-wrap" v-else-if="dailySummaryResult">
+          <!-- 旅行手记朋友圈文案 -->
+          <view class="summary-card">
+            <text class="card-lbl">✍️ 朋友圈/小红书旅行日记</text>
+            <view class="diary-bubble">
+              <text class="diary-text">{{ dailySummaryResult.daySummary }}</text>
+              <button class="copy-btn" @click="copyDiaryText(dailySummaryResult.daySummary)">复制文案</button>
+            </view>
+          </view>
+          
+          <!-- 记账开销结构分析 -->
+          <view class="summary-card" v-if="dailySummaryResult.expenseAnalysis">
+            <text class="card-lbl">📊 今日消费账单深度分析</text>
+            <view class="analysis-row">
+              <text class="total-cost-lbl">总开销金额：<text class="price">¥{{ dailySummaryResult.expenseAnalysis.total }}</text></text>
+            </view>
+            <view class="breakdown-grid" v-if="dailySummaryResult.expenseAnalysis.breakdown">
+              <view 
+                class="breakdown-item" 
+                v-for="(val, key) in dailySummaryResult.expenseAnalysis.breakdown" 
+                :key="key"
+              >
+                <text class="b-key">{{ key }}</text>
+                <text class="b-val">¥{{ val }}</text>
+              </view>
+            </view>
+            <text class="analysis-insight" v-if="dailySummaryResult.expenseAnalysis.insight">
+              💡 消费洞察：{{ dailySummaryResult.expenseAnalysis.insight }}
+            </text>
+          </view>
+
+          <!-- 避坑提醒 -->
+          <view class="summary-card warning-card" v-if="dailySummaryResult.moodSuggestion">
+            <text class="card-lbl">🧭 明日出游指南与避雷建议</text>
+            <text class="insight-text">{{ dailySummaryResult.moodSuggestion }}</text>
+          </view>
+        </view>
+      </scroll-view>
+      
+      <view class="drawer-footer" v-if="!isDailySummaryLoading && dailySummaryResult">
+        <button class="drawer-btn cancel" @click="closeDailySummaryDrawer">关闭</button>
+        <button class="drawer-btn confirm publish-btn" @click="goPublishTravelNote">
+          📸 一键将此生成发布为游记
         </button>
       </view>
     </view>
@@ -2999,5 +3508,631 @@ function goBackToList() {
 @keyframes warn-pulse {
   from { transform: scale(0.96); opacity: 0.85; }
   to { transform: scale(1.06); opacity: 1; }
+}
+
+/* 💰 实时预算与记账卡片 */
+.budget-card {
+  background: #ffffff;
+  margin: -30rpx 24rpx 24rpx;
+  border-radius: 20rpx;
+  padding: 28rpx 32rpx;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 10;
+  
+  .budget-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24rpx;
+    
+    .budget-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12rpx;
+      
+      .budget-card-icon {
+        font-size: 34rpx;
+      }
+      .budget-card-title {
+        font-size: 28rpx;
+        font-weight: 700;
+        color: #1e293b;
+      }
+    }
+    
+    .ai-summary-card-btn {
+      background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+      color: #ffffff;
+      font-size: 24rpx;
+      font-weight: 600;
+      padding: 0 24rpx;
+      height: 56rpx;
+      line-height: 56rpx;
+      border-radius: 28rpx;
+      border: none;
+      box-shadow: 0 6rpx 16rpx rgba(14, 165, 233, 0.2);
+      
+      &:active {
+        transform: scale(0.96);
+        opacity: 0.9;
+      }
+    }
+  }
+
+  .budget-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 20rpx;
+    
+    .budget-progress-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8rpx;
+      
+      .budget-progress-label-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        .progress-lbl {
+          font-size: 24rpx;
+          color: #64748b;
+        }
+        
+        .progress-val {
+          font-size: 24rpx;
+          color: #94a3b8;
+          
+          .actual-val {
+            font-size: 26rpx;
+            font-weight: 700;
+            color: #0ea5e9;
+            
+            &.warning {
+              color: #f43f5e;
+              animation: warn-pulse 1s infinite alternate;
+            }
+          }
+        }
+      }
+      
+      .budget-progress-bar-bg {
+        height: 12rpx;
+        background: #f1f5f9;
+        border-radius: 6rpx;
+        overflow: hidden;
+        
+        .budget-progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+          border-radius: 6rpx;
+          transition: width 0.3s ease;
+          
+          &.warning {
+            background: linear-gradient(90deg, #fb7185, #f43f5e);
+          }
+        }
+      }
+    }
+    
+    .budget-warning-tip {
+      display: flex;
+      align-items: center;
+      gap: 12rpx;
+      background: #fff1f2;
+      border: 1rpx solid #ffe4e6;
+      border-radius: 12rpx;
+      padding: 16rpx 20rpx;
+      margin-top: 8rpx;
+      
+      .warn-icon {
+        font-size: 28rpx;
+      }
+      .warn-txt {
+        font-size: 22rpx;
+        color: #e11d48;
+        font-weight: 500;
+      }
+    }
+  }
+}
+
+/* 📸 极美半屏抽屉样式 */
+.checkin-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  
+  &.show {
+    visibility: visible;
+    
+    .drawer-mask {
+      opacity: 0.6;
+    }
+    .drawer-content {
+      transform: translateY(0);
+    }
+  }
+  
+  .drawer-mask {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  .drawer-content {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #ffffff;
+    border-top-left-radius: 40rpx;
+    border-top-right-radius: 40rpx;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 -10rpx 40rpx rgba(0, 0, 0, 0.1);
+    
+    .drawer-header {
+      padding: 32rpx 40rpx;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1rpx solid #f1f5f9;
+      
+      .drawer-title {
+        font-size: 32rpx;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .close-btn {
+        font-size: 48rpx;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 0 10rpx;
+      }
+    }
+    
+    .drawer-scroll {
+      flex: 1;
+      padding: 32rpx 40rpx;
+      overflow-y: auto;
+    }
+    
+    .checkin-location-row {
+      display: flex;
+      align-items: center;
+      background: #f8fafc;
+      border: 1rpx solid #e2e8f0;
+      border-radius: 16rpx;
+      padding: 24rpx;
+      margin-bottom: 32rpx;
+      
+      .loc-icon {
+        font-size: 32rpx;
+        margin-right: 16rpx;
+      }
+      .loc-text {
+        flex: 1;
+        font-size: 26rpx;
+        color: #334155;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .loc-arrow {
+        font-size: 32rpx;
+        color: #94a3b8;
+      }
+    }
+    
+    .form-section {
+      margin-bottom: 36rpx;
+      
+      .section-lbl {
+        font-size: 26rpx;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 16rpx;
+        display: block;
+      }
+      
+      .textarea-wrap {
+        position: relative;
+        background: #f8fafc;
+        border: 1rpx solid #e2e8f0;
+        border-radius: 20rpx;
+        padding: 20rpx;
+        
+        .note-textarea {
+          width: 100%;
+          height: 180rpx;
+          font-size: 28rpx;
+          color: #0f172a;
+          line-height: 1.6;
+        }
+        
+        .ai-fill-btn {
+          position: absolute;
+          right: 20rpx;
+          bottom: 20rpx;
+          background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+          color: #ffffff;
+          font-size: 22rpx;
+          font-weight: 600;
+          height: 52rpx;
+          line-height: 52rpx;
+          padding: 0 20rpx;
+          border-radius: 26rpx;
+          border: none;
+          box-shadow: 0 4rpx 10rpx rgba(14, 165, 233, 0.15);
+          
+          &:active {
+            transform: scale(0.96);
+          }
+        }
+      }
+    }
+    
+    .ai-feedback-card {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.05), rgba(139, 92, 246, 0.05));
+      border: 1rpx solid rgba(14, 165, 233, 0.15);
+      border-radius: 20rpx;
+      padding: 24rpx;
+      margin-bottom: 36rpx;
+      
+      .ai-card-title-row {
+        margin-bottom: 12rpx;
+        .ai-logo {
+          font-size: 24rpx;
+          font-weight: 700;
+          color: #8b5cf6;
+        }
+      }
+      
+      .ai-feedback-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12rpx;
+        
+        .ai-feedback-tip {
+          display: flex;
+          align-items: flex-start;
+          gap: 8rpx;
+          
+          .icon {
+            font-size: 24rpx;
+          }
+          .txt {
+            font-size: 22rpx;
+            color: #ef4444;
+            line-height: 1.4;
+            font-weight: 500;
+          }
+          
+          &.green {
+            .txt {
+              color: #10b981;
+            }
+          }
+        }
+      }
+    }
+    
+    .expense-section {
+      background: #f8fafc;
+      border: 1rpx solid #e2e8f0;
+      border-radius: 20rpx;
+      padding: 24rpx;
+      
+      .section-lbl-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        .section-lbl {
+          margin-bottom: 0;
+        }
+      }
+      
+      .expense-inputs {
+        display: flex;
+        gap: 24rpx;
+        margin-top: 24rpx;
+        border-top: 1rpx solid #e2e8f0;
+        padding-top: 24rpx;
+        
+        .input-item {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 12rpx;
+          
+          .input-lbl {
+            font-size: 22rpx;
+            color: #64748b;
+            font-weight: 500;
+          }
+          
+          .money-input {
+            background: #ffffff;
+            border: 1rpx solid #cbd5e1;
+            border-radius: 12rpx;
+            height: 72rpx;
+            padding: 0 20rpx;
+            font-size: 28rpx;
+            color: #0f172a;
+          }
+          
+          .picker-val {
+            background: #ffffff;
+            border: 1rpx solid #cbd5e1;
+            border-radius: 12rpx;
+            height: 72rpx;
+            line-height: 72rpx;
+            padding: 0 20rpx;
+            font-size: 28rpx;
+            color: #0f172a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            
+            .arrow {
+              font-size: 16rpx;
+              color: #94a3b8;
+            }
+          }
+        }
+      }
+    }
+    
+    .image-upload-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16rpx;
+      
+      .upload-img-item {
+        width: 100%;
+        padding-top: 100%;
+        position: relative;
+        border-radius: 12rpx;
+        overflow: hidden;
+        
+        image {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+        }
+        
+        .del-btn {
+          position: absolute;
+          top: 0;
+          right: 0;
+          background: rgba(0, 0, 0, 0.6);
+          color: #ffffff;
+          width: 36rpx;
+          height: 36rpx;
+          text-align: center;
+          line-height: 32rpx;
+          font-size: 28rpx;
+          border-bottom-left-radius: 12rpx;
+        }
+      }
+      
+      .upload-add-btn {
+        width: 100%;
+        padding-top: 100%;
+        position: relative;
+        background: #f8fafc;
+        border: 2rpx dashed #cbd5e1;
+        border-radius: 12rpx;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        
+        .plus {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 48rpx;
+          color: #94a3b8;
+        }
+      }
+    }
+    
+    .drawer-footer {
+      padding: 24rpx 40rpx calc(24rpx + env(safe-area-inset-bottom));
+      border-top: 1rpx solid #f1f5f9;
+      display: flex;
+      gap: 20rpx;
+      
+      .drawer-btn {
+        flex: 1;
+        height: 88rpx;
+        line-height: 88rpx;
+        border-radius: 44rpx;
+        font-size: 28rpx;
+        font-weight: 700;
+        border: none;
+        
+        &.cancel {
+          background: #f1f5f9;
+          color: #475569;
+        }
+        
+        &.confirm {
+          background: #0ea5e9;
+          color: #ffffff;
+          box-shadow: 0 8rpx 20rpx rgba(14, 165, 233, 0.25);
+        }
+      }
+    }
+  }
+}
+
+/* 📝 总结抽屉专有样式 */
+.summary-drawer {
+  .summary-content {
+    max-height: 85vh;
+  }
+  
+  .summary-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 100rpx 0;
+    gap: 24rpx;
+    
+    .loading-text {
+      font-size: 24rpx;
+      color: #94a3b8;
+      text-align: center;
+      max-width: 400rpx;
+      line-height: 1.5;
+    }
+  }
+  
+  .summary-body-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 32rpx;
+    padding-bottom: 40rpx;
+  }
+  
+  .summary-card {
+    background: #f8fafc;
+    border: 1rpx solid #e2e8f0;
+    border-radius: 24rpx;
+    padding: 28rpx;
+    
+    .card-lbl {
+      font-size: 26rpx;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 16rpx;
+      display: block;
+    }
+    
+    .diary-bubble {
+      background: #ffffff;
+      border: 1rpx solid #cbd5e1;
+      border-radius: 16rpx;
+      padding: 24rpx;
+      position: relative;
+      
+      .diary-text {
+        font-size: 26rpx;
+        color: #334155;
+        line-height: 1.6;
+        display: block;
+      }
+      
+      .copy-btn {
+        margin-top: 16rpx;
+        align-self: flex-end;
+        background: #e2e8f0;
+        color: #475569;
+        font-size: 20rpx;
+        font-weight: 600;
+        height: 48rpx;
+        line-height: 48rpx;
+        border-radius: 24rpx;
+        border: none;
+        display: inline-block;
+        
+        &:active {
+          background: #cbd5e1;
+        }
+      }
+    }
+    
+    .analysis-row {
+      margin-bottom: 20rpx;
+      .total-cost-lbl {
+        font-size: 26rpx;
+        color: #64748b;
+        .price {
+          font-size: 32rpx;
+          font-weight: 700;
+          color: #e11d48;
+        }
+      }
+    }
+    
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16rpx;
+      margin-bottom: 20rpx;
+      
+      .breakdown-item {
+        background: #ffffff;
+        border: 1rpx solid #e2e8f0;
+        border-radius: 16rpx;
+        padding: 16rpx;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6rpx;
+        
+        .b-key {
+          font-size: 22rpx;
+          color: #64748b;
+        }
+        .b-val {
+          font-size: 24rpx;
+          font-weight: 700;
+          color: #334155;
+        }
+      }
+    }
+    
+    .analysis-insight {
+      font-size: 24rpx;
+      color: #7c3aed;
+      line-height: 1.5;
+      font-weight: 500;
+      display: block;
+    }
+    
+    &.warning-card {
+      background: #fdf4ff;
+      border: 1rpx solid #fae8ff;
+      
+      .card-lbl {
+        color: #a21caf;
+      }
+      .insight-text {
+        font-size: 24rpx;
+        color: #d946ef;
+        line-height: 1.6;
+        font-weight: 500;
+      }
+    }
+  }
+  
+  .publish-btn {
+    background: linear-gradient(135deg, #a855f7, #ec4899) !important;
+    color: #ffffff;
+    box-shadow: 0 8rpx 20rpx rgba(168, 85, 247, 0.25) !important;
+  }
 }
 </style>

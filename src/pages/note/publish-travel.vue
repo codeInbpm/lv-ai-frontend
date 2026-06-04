@@ -23,6 +23,35 @@ onLoad(async (options: any) => {
   if (options && options.draftId) {
     currentDraftId.value = Number(options.draftId)
     await loadDraft(currentDraftId.value)
+  } else {
+    // 检查是否有 AI 总结一键跳转带过来的数据
+    const aiCache = uni.getStorageSync('ai_summary_publish_data')
+    if (aiCache) {
+      store.type = 'travel'
+      store.title = aiCache.title || ''
+      store.travelData.destination = aiCache.destination || ''
+      store.tripDate = aiCache.tripDate || ''
+      store.travelData.totalDays = aiCache.totalDays || 1
+      
+      if (aiCache.daysList && aiCache.daysList.length > 0) {
+        store.travelData.daysList = aiCache.daysList.map((day: any) => ({
+          dayIndex: day.dayIndex,
+          date: day.date || '',
+          title: day.title || '',
+          moodWeather: day.moodWeather || '晴朗 / 愉快',
+          content: day.content || '',
+          images: day.images || [],
+          location: day.location || ''
+        }))
+      }
+      
+      store.travelData.summary = aiCache.summary || ''
+      store.travelData.costSummary = aiCache.costSummary || ''
+      store.travelData.tips = aiCache.tips || ''
+      
+      // 用完即焚，防止从其它页面进入时错误加载
+      uni.removeStorageSync('ai_summary_publish_data')
+    }
   }
 })
 

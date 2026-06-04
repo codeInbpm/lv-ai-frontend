@@ -144,5 +144,11 @@ export const planApi = {
   /** 安全拉取腾讯地图开发者Key */
   getMapKey: () => http.get<string>('/map/key'),
   /** 原子拉取行程明细项详情 */
-  getPlanItemDetail: (itemId: number) => http.get<TravelItem>(`/plan/item/${itemId}`)
+  getPlanItemDetail: (itemId: number) => http.get<TravelItem>(`/plan/item/${itemId}`),
+  /** 获取打卡AI建议 */
+  getCheckinAiSuggest: (itemId: number, userInput?: string) =>
+    http.post<any>(`/plan/checkin/ai-suggest?itemId=${itemId}&userInput=${encodeURIComponent(userInput || '')}`),
+  /** 生成今日行程与记账的AI总结 */
+  getDailySummary: (planId: number, dayId: number) =>
+    http.post<any>(`/plan/checkin/daily-summary?planId=${planId}&dayId=${dayId}`)
 }
