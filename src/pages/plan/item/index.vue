@@ -34,6 +34,14 @@ async function loadItemDetail(itemId: number) {
   loading.value = true
   try {
     const res = await planApi.getPlanItemDetail(itemId)
+    if (res.checkinRecord) {
+      if (typeof res.checkinRecord.images === 'string') {
+        try { res.checkinRecord.images = JSON.parse(res.checkinRecord.images) } catch {}
+      }
+      if (typeof res.checkinRecord.expenses === 'string') {
+        try { res.checkinRecord.expenses = JSON.parse(res.checkinRecord.expenses) } catch {}
+      }
+    }
     item.value = res
   } catch (err) {
     uni.showToast({ title: '加载行程明细失败', icon: 'none' })
@@ -157,7 +165,12 @@ function previewImage(urls: string[], index: number) {
           <view class="record-header">
             <text class="record-time" v-if="item.checkinRecord.createTime">🕒 {{ formatRecordTime(item.checkinRecord.createTime) }}</text>
             <view class="record-cost" v-if="item.checkinRecord.cost > 0">
-              <text>💰 ¥{{ item.checkinRecord.cost }}</text>
+              <text class="total-cost">💰 总计 ¥{{ item.checkinRecord.cost }}</text>
+              <view class="expense-breakdown" v-if="item.checkinRecord.expenses && item.checkinRecord.expenses.length > 0">
+                <text class="exp-tag" v-for="(exp, idx) in item.checkinRecord.expenses" :key="idx">
+                   {{ ['餐饮', '住宿', '交通', '门票', '购物', '其他'][exp.costType - 1] || '其他' }}: ¥{{ exp.amount }}
+                </text>
+              </view>
             </view>
           </view>
           <text class="record-content" v-if="item.checkinRecord.content">{{ item.checkinRecord.content }}</text>
@@ -291,7 +304,12 @@ function previewImage(urls: string[], index: number) {
 }
 .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16rpx; }
 .record-time { font-size: 24rpx; color: #64748b; }
-.record-cost { font-size: 28rpx; color: #ef4444; font-weight: bold; }
+.record-cost { 
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8rpx;
+}
+.total-cost { font-size: 28rpx; color: #ef4444; font-weight: bold; }
+.expense-breakdown { display: flex; flex-wrap: wrap; gap: 8rpx; justify-content: flex-end; }
+.exp-tag { font-size: 22rpx; background: #fee2e2; color: #dc2626; padding: 4rpx 12rpx; border-radius: 8rpx; }
 .record-content { font-size: 28rpx; color: #475569; display: block; margin-bottom: 16rpx; line-height: 1.5; }
 .record-images { display: flex; gap: 16rpx; flex-wrap: wrap; }
 .record-img { width: 160rpx; height: 160rpx; border-radius: 12rpx; }

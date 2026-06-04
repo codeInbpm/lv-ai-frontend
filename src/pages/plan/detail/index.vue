@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { planApi, type PlanDetailVO, type TravelItem, type TravelDay, type DayWithItems } from '../../../api/plan'
 import { http } from '../../../utils/request'
 import NavBar from '../../../components/common/NavBar.vue'
@@ -94,6 +94,9 @@ async function loadData() {
         item.checkinRecord = record
         if (record.images && typeof record.images === 'string') {
            try { item.checkinRecord.images = JSON.parse(record.images) } catch {}
+        }
+        if (record.expenses && typeof record.expenses === 'string') {
+           try { item.checkinRecord.expenses = JSON.parse(record.expenses) } catch {}
         }
       }
     })
@@ -363,7 +366,21 @@ function handleCheckInBtnClick(item: any) {
       confirmText: '跳转',
       success: (res) => {
         if (res.confirm) {
-          uni.showToast({ title: '体验版暂未关联外部小程序', icon: 'none' })
+          uni.setStorageSync('pendingTicketItemId', item.id)
+          uni.navigateToMiniProgram({
+            appId: 'wx23d8d7c2c1a60000', // 12306小程序appId (占位)
+            path: 'pages/index/index',
+            success: () => {
+              console.log('跳转小程序成功')
+            },
+            fail: () => {
+              // 开发工具或无权限时可能无法跳转，模拟返回效果
+              uni.showToast({ title: '体验版模拟跳转', icon: 'none' })
+              setTimeout(() => {
+                checkPendingTicketCheckin()
+              }, 1000)
+            }
+          })
         }
       }
     })
@@ -381,16 +398,7 @@ function handleItemClick(item: any) {
   }
 
   if (isExternalTransport(item)) {
-    uni.showModal({
-      title: '前往预订',
-      content: '即将跳转到携程/12306小程序',
-      confirmText: '跳转',
-      success: (res) => {
-        if (res.confirm) {
-          uni.showToast({ title: '体验版暂未关联外部小程序', icon: 'none' })
-        }
-      }
-    })
+    handleCheckInBtnClick(item)
     return
   }
   
@@ -398,6 +406,48 @@ function handleItemClick(item: any) {
   uni.setStorageSync('currentPlanItem', { ...item, planId: planId.value })
   uni.navigateTo({ url: `/pages/plan/item/index?id=${item.id}` })
 }
+
+async function checkPendingTicketCheckin() {
+  const pendingId = uni.getStorageSync('pendingTicketItemId')
+  if (pendingId) {
+    uni.removeStorageSync('pendingTicketItemId')
+    // 找到这个 item
+    let targetItem = null
+    let targetDayId = null
+    days.value.forEach(d => {
+      d.items.forEach(i => {
+        if (i.id === pendingId) {
+          targetItem = i
+          targetDayId = d.day.id
+        }
+      })
+    })
+
+    if (targetItem && !targetItem.checkedIn) {
+      uni.showLoading({ title: '自动同步预订状态...' })
+      try {
+        await http.post('/plan/checkin', {
+          planId: planId.value,
+          dayId: targetDayId,
+          itemId: pendingId,
+          content: '已在第三方平台完成预订',
+          cost: targetItem.estimatedCost || 0,
+          images: []
+        })
+        uni.showToast({ title: '预订成功，已自动打卡', icon: 'success' })
+        await loadData()
+      } catch {
+        uni.showToast({ title: '同步状态失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  }
+}
+
+onShow(() => {
+  checkPendingTicketCheckin()
+})
 
 function goChat() {
   openAiDrawer()
@@ -787,10 +837,11 @@ const checkingItem = ref<any>(null)
 const checkinLocationStr = ref('')
 const checkinForm = ref({
   content: '',
-  cost: '',
+  cost: '', // 保留作过渡/备用
   costType: 6,
   images: [] as string[],
-  hasExpense: false
+  hasExpense: false,
+  expenses: [] as { amount: string, costType: number }[]
 })
 const isCheckinAiLoading = ref(false)
 const checkinAiResult = ref<any>(null)
@@ -801,10 +852,11 @@ function openCheckinDrawer(item: any) {
   checkinLocationStr.value = item.address || ''
   checkinForm.value = {
     content: '',
-    cost: item.estimatedCost ? String(item.estimatedCost) : '',
+    cost: '',
     costType: 6,
     images: [] as string[],
-    hasExpense: item.estimatedCost && Number(item.estimatedCost) > 0
+    hasExpense: item.estimatedCost && Number(item.estimatedCost) > 0,
+    expenses: [] as { amount: string, costType: number }[]
   }
   
   // 默认推荐的费用类型映射
@@ -816,6 +868,10 @@ function openCheckinDrawer(item: any) {
   else if (itemType === 4) defaultExpenseType = 3 
   else if (itemType === 5) defaultExpenseType = 5 
   checkinForm.value.costType = defaultExpenseType
+  
+  if (checkinForm.value.hasExpense) {
+    checkinForm.value.expenses.push({ amount: String(item.estimatedCost), costType: defaultExpenseType })
+  }
 
   checkinAiResult.value = null
   showCheckInDrawer.value = true
@@ -828,10 +884,24 @@ function closeCheckinDrawer() {
 
 function toggleHasExpense(e: any) {
   checkinForm.value.hasExpense = e.detail.value
+  if (e.detail.value && checkinForm.value.expenses.length === 0) {
+    checkinForm.value.expenses.push({ amount: '', costType: checkinForm.value.costType || 6 })
+  }
 }
 
 function onExpenseTypeChange(e: any) {
   checkinForm.value.costType = Number(e.detail.value) + 1
+}
+
+function addExpense() {
+  checkinForm.value.expenses.push({ amount: '', costType: 6 })
+}
+
+function removeExpense(idx: number) {
+  checkinForm.value.expenses.splice(idx, 1)
+  if (checkinForm.value.expenses.length === 0) {
+    checkinForm.value.hasExpense = false
+  }
 }
 
 // 选择打卡定位
@@ -896,6 +966,9 @@ async function callCheckinAiSuggest() {
           checkinForm.value.costType = typeVal
         }
       }
+      if (checkinForm.value.hasExpense) {
+         checkinForm.value.expenses = [{ amount: checkinForm.value.cost, costType: checkinForm.value.costType }]
+      }
       uni.showToast({ title: 'AI 自动生成润色完毕', icon: 'success' })
     }
   } catch (err: any) {
@@ -916,8 +989,9 @@ async function submitCheckinForm() {
     itemId: checkingItem.value.id,
     type: 1, // 打卡
     content: checkinForm.value.content,
-    cost: checkinForm.value.hasExpense && checkinForm.value.cost ? Number(checkinForm.value.cost) : 0,
-    costType: checkinForm.value.hasExpense ? checkinForm.value.costType : null,
+    expenses: checkinForm.value.hasExpense ? checkinForm.value.expenses.map(e => ({ amount: Number(e.amount), costType: e.costType })) : [],
+    cost: 0,
+    costType: null,
     images: checkinForm.value.images,
     checkinLocation: checkinLocationStr.value,
     actualStartTime: new Date().toISOString()
@@ -1342,7 +1416,14 @@ function goPublishTravelNote() {
                   <view class="checkin-record-box" v-if="item.checkinRecord && !isEditing">
                     <view class="record-header">
                       <text class="record-title">📸 我的打卡足迹</text>
-                      <text class="record-cost" v-if="item.checkinRecord.cost > 0">花费: ¥{{ item.checkinRecord.cost }}</text>
+                      <view class="record-cost" v-if="item.checkinRecord.cost > 0">
+                        <text>花费: ¥{{ item.checkinRecord.cost }}</text>
+                        <view class="expense-breakdown" v-if="item.checkinRecord.expenses && item.checkinRecord.expenses.length > 0">
+                          <text class="exp-tag" v-for="(exp, idx) in item.checkinRecord.expenses" :key="idx">
+                             {{ ['餐饮', '住宿', '交通', '门票', '购物', '其他'][exp.costType - 1] || '其他' }}: ¥{{ exp.amount }}
+                          </text>
+                        </view>
+                      </view>
                     </view>
                     <view class="record-time-row" v-if="item.checkinRecord.createTime">
                       <text class="record-time">🕒 {{ formatRecordTime(item.checkinRecord.createTime) }}</text>
@@ -1767,18 +1848,26 @@ function goPublishTravelNote() {
             <switch :checked="checkinForm.hasExpense" @change="toggleHasExpense" color="#0ea5e9" style="transform: scale(0.8)" />
           </view>
           
-          <view class="expense-inputs" v-if="checkinForm.hasExpense">
-            <view class="input-item">
-              <text class="input-lbl">消费金额 (元)</text>
-              <input class="money-input" type="digit" v-model="checkinForm.cost" placeholder="0.00" />
+          <view class="expense-list-container" v-if="checkinForm.hasExpense">
+            <view class="expense-row" v-for="(exp, idx) in checkinForm.expenses" :key="idx">
+              <view class="input-item flex-1">
+                <text class="input-lbl">金额 (元)</text>
+                <input class="money-input" type="digit" v-model="exp.amount" placeholder="0.00" />
+              </view>
+              <view class="input-item flex-1">
+                <text class="input-lbl">费用分类</text>
+                <picker :value="exp.costType - 1" :range="expenseTypeNames" @change="e => exp.costType = Number(e.detail.value) + 1">
+                  <view class="picker-val">
+                    {{ expenseTypeNames[exp.costType - 1] }} <text class="arrow">▼</text>
+                  </view>
+                </picker>
+              </view>
+              <view class="del-expense-btn" @click="removeExpense(idx)">
+                <text class="del-icon">×</text>
+              </view>
             </view>
-            <view class="input-item">
-              <text class="input-lbl">费用分类</text>
-              <picker :value="checkinForm.costType - 1" :range="expenseTypeNames" @change="onExpenseTypeChange">
-                <view class="picker-val">
-                  {{ expenseTypeNames[checkinForm.costType - 1] }} <text class="arrow">▼</text>
-                </view>
-              </picker>
+            <view class="add-expense-btn" @click="addExpense">
+              <text class="add-icon">+ 添加其他消费</text>
             </view>
           </view>
         </view>
@@ -2311,9 +2400,27 @@ function goPublishTravelNote() {
   color: #94a3b8;
 }
 .record-cost {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
   font-size: 24rpx;
   color: #ef4444;
-  font-weight: bold;
+  font-weight: 700;
+}
+.expense-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  justify-content: flex-end;
+}
+.exp-tag {
+  font-size: 20rpx;
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-weight: 500;
 }
 .record-content {
   font-size: 26rpx;
@@ -3849,15 +3956,25 @@ function goPublishTravelNote() {
         }
       }
       
-      .expense-inputs {
+      .expense-list-container {
         display: flex;
-        gap: 24rpx;
+        flex-direction: column;
+        gap: 20rpx;
         margin-top: 24rpx;
         border-top: 1rpx solid #e2e8f0;
         padding-top: 24rpx;
         
-        .input-item {
+        .expense-row {
+          display: flex;
+          align-items: center;
+          gap: 20rpx;
+        }
+
+        .flex-1 {
           flex: 1;
+        }
+        
+        .input-item {
           display: flex;
           flex-direction: column;
           gap: 12rpx;
@@ -3895,6 +4012,34 @@ function goPublishTravelNote() {
               font-size: 16rpx;
               color: #94a3b8;
             }
+          }
+        }
+
+        .del-expense-btn {
+          width: 60rpx;
+          height: 72rpx;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: 34rpx;
+          
+          .del-icon {
+            font-size: 40rpx;
+            color: #ef4444;
+          }
+        }
+
+        .add-expense-btn {
+          padding: 16rpx 0;
+          text-align: center;
+          background: #f1f5f9;
+          border-radius: 12rpx;
+          margin-top: 10rpx;
+          
+          .add-icon {
+            font-size: 26rpx;
+            color: #0ea5e9;
+            font-weight: 500;
           }
         }
       }
