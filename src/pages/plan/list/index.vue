@@ -153,6 +153,16 @@ async function deletePlan(planId: number) {
               <text class="meta-item">{{ plan.days }}天</text>
               <text class="meta-item">👥 {{ plan.peopleCount || 2 }}人</text>
             </view>
+            <!-- 行程打卡进度条 -->
+            <view class="card-progress-bar-wrap">
+              <view class="progress-info">
+                <text class="progress-lbl">行程进度</text>
+                <text class="progress-val">{{ plan.progress || 0 }}%</text>
+              </view>
+              <view class="progress-track">
+                <view class="progress-fill" :style="{ width: (plan.progress || 0) + '%' }"></view>
+              </view>
+            </view>
             <view class="card-footer">
               <text class="budget-text" v-if="plan.budget">预算 ¥{{ plan.budget }}</text>
               <view class="card-actions">
@@ -285,5 +295,43 @@ async function deletePlan(planId: number) {
   box-shadow: 0 6rpx 20rpx rgba(14,165,233,0.4);
   font-size: 48rpx;
   color: #fff;
+}
+
+.card-progress-bar-wrap {
+  margin: 16rpx 0 24rpx 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    
+    .progress-lbl {
+      font-size: 22rpx;
+      color: var(--text-tertiary);
+    }
+    
+    .progress-val {
+      font-size: 22rpx;
+      font-weight: 700;
+      color: var(--primary);
+    }
+  }
+  
+  .progress-track {
+    height: 10rpx;
+    background: #f1f5f9;
+    border-radius: 6rpx;
+    overflow: hidden;
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0ea5e9, #0284c7);
+      border-radius: 6rpx;
+      transition: width 0.3s ease;
+    }
+  }
 }
 </style>

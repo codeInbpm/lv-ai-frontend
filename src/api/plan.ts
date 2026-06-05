@@ -72,6 +72,7 @@ export interface TravelPlan {
   viewCount: number
   collectCount: number
   createTime: string
+  progress?: number
 }
 
 export interface DayWithItems {
@@ -150,5 +151,8 @@ export const planApi = {
     http.post<any>(`/plan/checkin/ai-suggest?itemId=${itemId}&userInput=${encodeURIComponent(userInput || '')}`),
   /** 生成今日行程与记账的AI总结 */
   getDailySummary: (planId: number, dayId: number) =>
-    http.post<any>(`/plan/checkin/daily-summary?planId=${planId}&dayId=${dayId}`)
+    http.post<any>(`/plan/checkin/daily-summary?planId=${planId}&dayId=${dayId}`),
+  /** 获取行程的AI游记草稿 */
+  getAiDraft: (planId: number) =>
+    http.get<any>(`/plan/${planId}/ai-draft`)
 }

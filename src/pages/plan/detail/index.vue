@@ -64,7 +64,10 @@ onMounted(async () => {
   if (planId.value) {
     try {
       await loadData()
-      uni.$on('refreshPlanDetail', loadData)
+      uni.$on('refreshPlanDetail', async () => {
+        await loadData()
+        await checkPlanCompletion()
+      })
     } catch {
       uni.showToast({ title: '加载失败', icon: 'none' })
     } finally {
@@ -76,6 +79,7 @@ onMounted(async () => {
 import { onUnload } from '@dcloudio/uni-app'
 onUnload(() => {
   uni.$off('refreshPlanDetail', loadData)
+  stopPollingDraft()
 })
 
 async function loadData() {
@@ -339,6 +343,7 @@ async function checkIn(item: TravelItem) {
           
           // 可触发外层相关依赖刷新
           await loadData()
+          await checkPlanCompletion()
         } catch {
           uni.hideLoading()
           uni.showToast({ title: '打卡失败', icon: 'none' })
@@ -436,6 +441,7 @@ async function checkPendingTicketCheckin() {
         })
         uni.showToast({ title: '预订成功，已自动打卡', icon: 'success' })
         await loadData()
+        await checkPlanCompletion()
       } catch {
         uni.showToast({ title: '同步状态失败', icon: 'none' })
       } finally {
@@ -831,6 +837,107 @@ const totalPercent = computed(() => {
   return Math.min(100, Math.round((totalActual.value / totalBudget.value) * 100))
 })
 
+// 🎉 全部打卡完成 AI生成游记草稿相关状态
+const showDraftDialog = ref(false)
+const isDraftGenerating = ref(false)
+const aiDraftData = ref<any>(null)
+let draftPollTimer: any = null
+
+// 轮询获取AI游记草稿
+function startPollingDraft() {
+  isDraftGenerating.value = true
+  aiDraftData.value = null
+  let pollCount = 0
+  const maxPolls = 15 // 最多轮询15次，每次2秒，共30秒
+  
+  if (draftPollTimer) {
+    clearInterval(draftPollTimer)
+  }
+  
+  draftPollTimer = setInterval(async () => {
+    pollCount++
+    try {
+      const res = await planApi.getAiDraft(planId.value)
+      if (res && res.id) {
+        aiDraftData.value = res
+        isDraftGenerating.value = false
+        clearInterval(draftPollTimer)
+        draftPollTimer = null
+      } else if (pollCount >= maxPolls) {
+        isDraftGenerating.value = false
+        clearInterval(draftPollTimer)
+        draftPollTimer = null
+        uni.showToast({ title: 'AI游记草稿生成较慢，已转为后台生成，请稍后在我的草稿箱查看', icon: 'none', duration: 4000 })
+      }
+    } catch (err) {
+      console.error('轮询游记草稿失败:', err)
+      if (pollCount >= maxPolls) {
+        isDraftGenerating.value = false
+        clearInterval(draftPollTimer)
+        draftPollTimer = null
+      }
+    }
+  }, 2000)
+}
+
+// 停止轮询
+function stopPollingDraft() {
+  if (draftPollTimer) {
+    clearInterval(draftPollTimer)
+    draftPollTimer = null
+  }
+}
+
+// 关闭草稿弹窗
+function closeDraftDialog() {
+  showDraftDialog.value = false
+  stopPollingDraft()
+  uni.showToast({ title: '游记草稿将在后台生成，您可稍后在「我的-草稿箱」中查看', icon: 'none', duration: 3000 })
+}
+
+// 查看游记草稿
+function goPublishTravelDraft() {
+  if (isDraftGenerating.value || !aiDraftData.value) return
+  showDraftDialog.value = false
+  stopPollingDraft()
+  uni.navigateTo({
+    url: `/pages/note/publish-travel?draftId=${aiDraftData.value.id}`
+  })
+}
+
+// 跳转到草稿箱
+function goDraftBox() {
+  showDraftDialog.value = false
+  stopPollingDraft()
+  uni.navigateTo({
+    url: '/pages/me/community'
+  })
+}
+
+// 核心检测：判断是否打卡全部完成并变更为已完成状态
+async function checkPlanCompletion() {
+  if (!plan.value) return
+  
+  // 进度100%时触发
+  if (progress.value === 100) {
+    // 1. 若当前状态仍未同步为3（已完成），则在前端进行一次保底状态更新
+    if (plan.value.status !== 3) {
+      try {
+        await planApi.updatePlanStatus(planId.value, 3)
+        plan.value.status = 3 // 同步更新本地状态，防止重复触发
+      } catch (e) {
+        console.error('更新行程状态为已完成失败:', e)
+      }
+    }
+    
+    // 2. 只要当前进度达100%且完成弹窗尚未展示过，即弹出游记手账提示并开始轮询
+    if (!showDraftDialog.value) {
+      showDraftDialog.value = true
+      startPollingDraft()
+    }
+  }
+}
+
 // 打卡抽屉状态
 const showCheckInDrawer = ref(false)
 const checkingItem = ref<any>(null)
@@ -1006,6 +1113,7 @@ async function submitCheckinForm() {
     // 关闭抽屉并重载刷新数据
     closeCheckinDrawer()
     await loadData()
+    await checkPlanCompletion()
   } catch (err: any) {
     uni.hideLoading()
     uni.showToast({ title: err?.data?.message || '提交打卡失败', icon: 'none' })
@@ -1953,6 +2061,48 @@ function goPublishTravelNote() {
         <button class="drawer-btn confirm publish-btn" @click="goPublishTravelNote">
           📸 一键将此生成发布为游记
         </button>
+      </view>
+    </view>
+
+    <!-- 🎉 恭喜通关/打卡完成 AI生成游记草稿弹窗 -->
+    <view class="completion-dialog-mask" v-if="showDraftDialog" @touchmove.stop.prevent>
+      <view class="completion-dialog-content">
+        <view class="dialog-header">
+          <text class="congrats-emoji">🎉</text>
+          <text class="dialog-title">恭喜完成全部行程打卡！</text>
+        </view>
+        
+        <view class="dialog-body">
+          <view class="journey-complete-icon" :class="{ rotating: isDraftGenerating }">
+            <text class="status-icon" v-if="!isDraftGenerating">🏆</text>
+            <view class="radar-dot" v-else></view>
+          </view>
+          
+          <text class="dialog-desc">
+            {{ isDraftGenerating ? 'AI 旅伴正在为您把行程的点点滴滴绘制成精美游记草稿，这可能需要数秒时间（已在后台异步生成）。您也可以稍后在草稿箱中查看它。' : 'AI 已为您绘制好了一份精美的游记手账草稿！您也可以在草稿箱中找到它。' }}
+          </text>
+          
+          <view class="draft-preview-card" v-if="!isDraftGenerating && aiDraftData">
+            <view class="preview-header">
+              <text class="preview-tag">📖 AI 游记预览</text>
+            </view>
+            <text class="preview-title">{{ aiDraftData.title || '我的精彩旅行' }}</text>
+            <text class="preview-summary">{{ aiDraftData.summary || '精彩游记内容已为您准备就绪。' }}</text>
+          </view>
+        </view>
+        
+        <view class="dialog-footer">
+          <button class="dialog-btn draft-box" @click="goDraftBox">去草稿箱</button>
+          <button 
+            class="dialog-btn confirm" 
+            :class="{ disabled: isDraftGenerating }" 
+            :disabled="isDraftGenerating"
+            @click="goPublishTravelDraft"
+          >
+            {{ isDraftGenerating ? '生成中...' : '去看看' }}
+          </button>
+        </view>
+        <view class="close-text-btn" @click="closeDraftDialog">稍后再说</view>
       </view>
     </view>
   </view>
@@ -4278,6 +4428,252 @@ function goPublishTravelNote() {
     background: linear-gradient(135deg, #a855f7, #ec4899) !important;
     color: #ffffff;
     box-shadow: 0 8rpx 20rpx rgba(168, 85, 247, 0.25) !important;
+  }
+}
+
+/* 🎉 恭喜打卡完成 & AI游记草稿弹窗样式 */
+.completion-dialog-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 40rpx;
+  box-sizing: border-box;
+  animation: fadeIn 0.35s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.completion-dialog-content {
+  background: #ffffff;
+  border-radius: 40rpx;
+  width: 100%;
+  max-width: 620rpx;
+  padding: 48rpx 40rpx;
+  box-sizing: border-box;
+  box-shadow: 0 25rpx 50rpx -12rpx rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  animation: scaleUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.dialog-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 32rpx;
+  
+  .congrats-emoji {
+    font-size: 80rpx;
+    line-height: 1;
+    animation: bounce 2s infinite;
+  }
+  
+  .dialog-title {
+    font-size: 36rpx;
+    font-weight: 800;
+    color: #0f172a;
+    text-align: center;
+  }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-15rpx) scale(1.08); }
+}
+
+.dialog-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28rpx;
+  margin-bottom: 48rpx;
+  
+  .journey-complete-icon {
+    width: 160rpx;
+    height: 160rpx;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10rpx 25rpx -5rpx rgba(251, 191, 36, 0.3);
+    
+    .status-icon {
+      font-size: 88rpx;
+      line-height: 1;
+    }
+    
+    /* 雷达雷环 Loading 样式 */
+    .radar-dot {
+      width: 48rpx;
+      height: 48rpx;
+      background: #38bdf8;
+      border-radius: 50%;
+      position: relative;
+      
+      &::before, &::after {
+        content: '';
+        position: absolute;
+        top: -40rpx;
+        left: -40rpx;
+        right: -40rpx;
+        bottom: -40rpx;
+        border: 4rpx solid #38bdf8;
+        border-radius: 50%;
+        animation: radarPulse 1.8s infinite ease-out;
+        opacity: 0;
+      }
+      
+      &::after {
+        animation-delay: 0.9s;
+      }
+    }
+  }
+  
+  .journey-complete-icon.rotating {
+    background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+    box-shadow: 0 10rpx 25rpx -5rpx rgba(14, 165, 233, 0.2);
+  }
+  
+  .dialog-desc {
+    font-size: 28rpx;
+    color: #475569;
+    text-align: center;
+    line-height: 1.6;
+    padding: 0 16rpx;
+  }
+}
+
+@keyframes radarPulse {
+  0% { transform: scale(0.6); opacity: 0; }
+  25% { opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.draft-preview-card {
+  width: 100%;
+  background: #f8fafc;
+  border: 1rpx solid #cbd5e1;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  
+  .preview-header {
+    display: flex;
+    align-items: center;
+    
+    .preview-tag {
+      font-size: 20rpx;
+      font-weight: 700;
+      color: #0284c7;
+      background: #e0f2fe;
+      padding: 4rpx 16rpx;
+      border-radius: 20rpx;
+    }
+  }
+  
+  .preview-title {
+    font-size: 28rpx;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.4;
+  }
+  
+  .preview-summary {
+    font-size: 24rpx;
+    color: #64748b;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
+.dialog-footer {
+  width: 100%;
+  display: flex;
+  gap: 24rpx;
+  
+  .dialog-btn {
+    flex: 1;
+    height: 88rpx;
+    line-height: 88rpx;
+    border-radius: 44rpx;
+    font-size: 28rpx;
+    font-weight: 700;
+    border: none;
+    outline: none;
+    text-align: center;
+    transition: all 0.2s ease;
+    
+    &::after {
+      border: none;
+    }
+    
+    &.draft-box {
+      background: #e0f2fe;
+      color: #0369a1;
+      
+      &:active {
+        background: #bae6fd;
+      }
+    }
+    
+    &.confirm {
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: #ffffff;
+      box-shadow: 0 10rpx 25rpx rgba(14, 165, 233, 0.35);
+      
+      &:active {
+        opacity: 0.9;
+        transform: translateY(2rpx);
+      }
+      
+      &.disabled {
+        background: #cbd5e1 !important;
+        color: #94a3b8 !important;
+        box-shadow: none !important;
+        opacity: 0.8;
+      }
+    }
+  }
+}
+
+.close-text-btn {
+  margin-top: 32rpx;
+  font-size: 26rpx;
+  color: #94a3b8;
+  text-align: center;
+  font-weight: 500;
+  text-decoration: underline;
+  
+  &:active {
+    color: #64748b;
   }
 }
 </style>
